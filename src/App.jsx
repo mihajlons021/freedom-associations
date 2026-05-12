@@ -10,838 +10,769 @@ const firebaseConfig = {
   projectId: "project-freedom-a004e",
   storageBucket: "project-freedom-a004e.firebasestorage.app",
   messagingSenderId: "844172246267",
-  appId: "1:844172246267:web:a31b8cd6affe8337f7845e",
+  appId: "1:844172246767:web:a31b8cd6affe8337f7845e",
 };
-const FB = initializeApp(firebaseConfig);
-const db = getDatabase(FB);
-const auth = getAuth(FB);
+const firebaseApp = initializeApp(firebaseConfig);
+const db = getDatabase(firebaseApp);
+const auth = getAuth(firebaseApp);
 
 const ESCROW = "GynyDkXj8WVdP7XDL1nTekF7Azv7ebxA7RCMnY3a3tSu";
 const WAGERS = [100, 500, 1000];
-const T_TURN = 30;
-const T_FINAL = 60;
-const T_IDLE = 60;
-const GREEN = "#22c55e";
-const P1CLR = "#ef4444";
-const P2CLR = "#3b82f6";
+const TURN_TIME = 30;
+const FINAL_TIME = 60;
+const IDLE_TIME = 60;
+const ACC = { A:"#e63946", B:"#f4a261", C:"#2a9d8f", D:"#457b9d" };
 
 async function connectPhantom() {
   try {
-    if (!window.solana?.isPhantom) { window.open("https://phantom.app/","_blank"); return null; }
-    const r = await window.solana.connect();
-    return r.publicKey.toString();
-  } catch { return null; }
-}
-async function signWager(amount) {
-  try {
-    const msg = new TextEncoder().encode(`Wager ${amount} FREEDOM`);
-    await window.solana.signMessage(msg, "utf8");
-    return { ok:true, tx:"SIG_"+Date.now() };
-  } catch(e) { return { ok:false, err:e.message }; }
+    if (!window.solana?.isPhantom) { window.open("https://phantom.app/", "_blank"); return null; }
+    const resp = await window.solana.connect();
+    return resp.publicKey.toString();
+  } catch(e) { return null; }
 }
 
-async function aiBoard() {
+async function sendWager(amount, walletAddr) {
   try {
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
-      method:"POST", headers:{"Content-Type":"application/json"},
+    if (!window.solana?.isPhantom) return { success: false, error: "Phantom not found" };
+    const msg = new TextEncoder().encode(`Wager ${amount} FREEDOM to escrow ${ESCROW}`);
+    await window.solana.signMessage(msg, "utf8");
+    return { success: true, txid: "SIG_" + Date.now() };
+  } catch(e) { return { success: false, error: e.message }; }
+}
+
+async function generateBoard() {
+  try {
+    const r = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        model:"claude-sonnet-4-20250514", max_tokens:1200,
-        messages:[{ role:"user", content:
-`Return ONLY a JSON object (no markdown, no explanation) for an English word-association game:
-{"columns":[
-  {"id":"A","theme":"WORD","fields":[{"id":"A1","clue":"2-3 WORD CLUE","answer":"WORD"},{"id":"A2","clue":"CLUE","answer":"WORD"},{"id":"A3","clue":"CLUE","answer":"WORD"},{"id":"A4","clue":"CLUE","answer":"WORD"}]},
-  {"id":"B","theme":"WORD","fields":[{"id":"B1","clue":"CLUE","answer":"WORD"},{"id":"B2","clue":"CLUE","answer":"WORD"},{"id":"B3","clue":"CLUE","answer":"WORD"},{"id":"B4","clue":"CLUE","answer":"WORD"}]},
-  {"id":"C","theme":"WORD","fields":[{"id":"C1","clue":"CLUE","answer":"WORD"},{"id":"C2","clue":"CLUE","answer":"WORD"},{"id":"C3","clue":"CLUE","answer":"WORD"},{"id":"C4","clue":"CLUE","answer":"WORD"}]},
-  {"id":"D","theme":"WORD","fields":[{"id":"D1","clue":"CLUE","answer":"WORD"},{"id":"D2","clue":"CLUE","answer":"WORD"},{"id":"D3","clue":"CLUE","answer":"WORD"},{"id":"D4","clue":"CLUE","answer":"WORD"}]}
-],"final":{"answer":"WORD","hint":"HINT"}}
-Rules: all text UPPERCASE, 4 distinct themes, clues 2-3 words, answers single word, final answer is the common supercategory.`
-        }]
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 1200,
+        messages: [{ role: "user", content: `Generate a word association game board in English. Return ONLY valid JSON, no markdown, no explanation.
+{"columns":[{"id":"A","theme":"THEME","fields":[{"id":"A1","clue":"short clue","answer":"ANSWER"},{"id":"A2","clue":"short clue","answer":"ANSWER"},{"id":"A3","clue":"short clue","answer":"ANSWER"},{"id":"A4","clue":"short clue","answer":"ANSWER"}]},{"id":"B","theme":"THEME","fields":[{"id":"B1","clue":"short clue","answer":"ANSWER"},{"id":"B2","clue":"short clue","answer":"ANSWER"},{"id":"B3","clue":"short clue","answer":"ANSWER"},{"id":"B4","clue":"short clue","answer":"ANSWER"}]},{"id":"C","theme":"THEME","fields":[{"id":"C1","clue":"short clue","answer":"ANSWER"},{"id":"C2","clue":"short clue","answer":"ANSWER"},{"id":"C3","clue":"short clue","answer":"ANSWER"},{"id":"C4","clue":"short clue","answer":"ANSWER"}]},{"id":"D","theme":"THEME","fields":[{"id":"D1","clue":"short clue","answer":"ANSWER"},{"id":"D2","clue":"short clue","answer":"ANSWER"},{"id":"D3","clue":"short clue","answer":"ANSWER"},{"id":"D4","clue":"short clue","answer":"ANSWER"}]}],"final":{"answer":"ANSWER","hint":"hint"}}
+Rules: 4 completely different themes, English, short clues 1-3 words, single word CAPS answers, final answer is supercategory of all 4 themes.` }]
       })
     });
-    const d = await res.json();
-    return JSON.parse(d.content[0].text.replace(/```json|```/g,"").trim());
-  } catch { return DEMO; }
+    const data = await r.json();
+    return JSON.parse(data.content[0].text.replace(/```json|```/g, "").trim());
+  } catch(e) { return FALLBACK; }
 }
 
-const DEMO = {
-  columns:[
-    {id:"A",theme:"ANIMALS",fields:[{id:"A1",clue:"KING OF JUNGLE",answer:"LION"},{id:"A2",clue:"STRIPED HORSE",answer:"ZEBRA"},{id:"A3",clue:"LONG NECK",answer:"GIRAFFE"},{id:"A4",clue:"TRUNK & IVORY",answer:"ELEPHANT"}]},
-    {id:"B",theme:"INSTRUMENTS",fields:[{id:"B1",clue:"SIX STRINGS",answer:"GUITAR"},{id:"B2",clue:"88 KEYS",answer:"PIANO"},{id:"B3",clue:"HIT WITH STICKS",answer:"DRUM"},{id:"B4",clue:"BRASS VALVES",answer:"TRUMPET"}]},
-    {id:"C",theme:"SPORTS",fields:[{id:"C1",clue:"COURT RACKET",answer:"TENNIS"},{id:"C2",clue:"ICE PUCK",answer:"HOCKEY"},{id:"C3",clue:"POOL LANES",answer:"SWIMMING"},{id:"C4",clue:"EIGHT SIDED",answer:"MMA"}]},
-    {id:"D",theme:"FOOD",fields:[{id:"D1",clue:"ITALIAN PIE",answer:"PIZZA"},{id:"D2",clue:"JAPANESE ROLL",answer:"SUSHI"},{id:"D3",clue:"MEXICAN WRAP",answer:"BURRITO"},{id:"D4",clue:"FRENCH BREAD",answer:"BAGUETTE"}]},
+const FALLBACK = {
+  columns: [
+    { id:"A", theme:"ANIMALS", fields:[{id:"A1",clue:"King of jungle",answer:"LION"},{id:"A2",clue:"Black & white stripes",answer:"ZEBRA"},{id:"A3",clue:"Longest neck",answer:"GIRAFFE"},{id:"A4",clue:"Trunk & tusks",answer:"ELEPHANT"}] },
+    { id:"B", theme:"INSTRUMENTS", fields:[{id:"B1",clue:"6 strings",answer:"GUITAR"},{id:"B2",clue:"88 keys",answer:"PIANO"},{id:"B3",clue:"You hit it",answer:"DRUM"},{id:"B4",clue:"Brass wind",answer:"TRUMPET"}] },
+    { id:"C", theme:"SPORTS", fields:[{id:"C1",clue:"Court & net",answer:"TENNIS"},{id:"C2",clue:"Ice & skates",answer:"HOCKEY"},{id:"C3",clue:"Pool & cap",answer:"SWIMMING"},{id:"C4",clue:"The octagon",answer:"MMA"}] },
+    { id:"D", theme:"FOOD", fields:[{id:"D1",clue:"Italian pie",answer:"PIZZA"},{id:"D2",clue:"Japanese roll",answer:"SUSHI"},{id:"D3",clue:"Mexican wrap",answer:"BURRITO"},{id:"D4",clue:"French bread",answer:"BAGUETTE"}] },
   ],
-  final:{answer:"FREEDOM",hint:"PROJECT FREEDOM"}
+  final: { answer:"FREEDOM", hint:"Project Freedom" }
 };
 
-const norm = s => s.trim().toUpperCase().replace(/[^A-Z0-9]/g,"");
-const hit  = (a,b) => norm(a)===norm(b);
-const uid6 = () => Math.random().toString(36).slice(2,8).toUpperCase();
+function norm(s) { return s.trim().toUpperCase().replace(/[^A-Z0-9]/g, ""); }
+function match(a, b) { return norm(a) === norm(b); }
+function genId() { return Math.random().toString(36).slice(2, 8).toUpperCase(); }
 
-const Skull = ({sz=36}) => (
-  <svg width={sz} height={sz} viewBox="0 0 64 64" fill="none">
-    <polygon points="32,2 54,16 54,40 32,54 10,40 10,16" stroke="#8b5cf6" strokeWidth="2" fill="none" opacity=".5"/>
-    <circle cx="32" cy="26" r="16" fill="#fff" opacity=".93"/>
-    <rect x="24" y="38" width="7" height="9" rx="2" fill="#fff" opacity=".93"/>
-    <rect x="33" y="38" width="7" height="9" rx="2" fill="#fff" opacity=".93"/>
-    <ellipse cx="26" cy="24" rx="4.5" ry="5.5" fill="#111"/>
-    <ellipse cx="38" cy="24" rx="4.5" ry="5.5" fill="#111"/>
-    <ellipse cx="26" cy="23" rx="1.5" ry="2" fill="#8b5cf6" opacity=".9"/>
-    <ellipse cx="38" cy="23" rx="1.5" ry="2" fill="#22c55e" opacity=".9"/>
-    <path d="M28 34L32 31L36 34" stroke="#444" strokeWidth="1.5" fill="none"/>
-  </svg>
-);
+function Skull({ size = 44 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 64 64" fill="none">
+      <polygon points="32,2 54,16 54,40 32,54 10,40 10,16" fill="none" stroke="#8b5cf6" strokeWidth="2" opacity=".5"/>
+      <circle cx="32" cy="26" r="16" fill="#fff" opacity=".93"/>
+      <rect x="24" y="38" width="7" height="9" rx="2" fill="#fff" opacity=".93"/>
+      <rect x="33" y="38" width="7" height="9" rx="2" fill="#fff" opacity=".93"/>
+      <ellipse cx="26" cy="24" rx="4.5" ry="5.5" fill="#111"/>
+      <ellipse cx="38" cy="24" rx="4.5" ry="5.5" fill="#111"/>
+      <ellipse cx="26" cy="23" rx="1.5" ry="2" fill="#8b5cf6" opacity=".9"/>
+      <ellipse cx="38" cy="23" rx="1.5" ry="2" fill="#22c55e" opacity=".9"/>
+      <path d="M28 34 L32 31 L36 34" stroke="#333" strokeWidth="1.5" fill="none"/>
+    </svg>
+  );
+}
 
-const Header = () => (
-  <div style={{width:"100%",background:"#050505",borderBottom:"2px solid #1a1a1a",
-    padding:"8px 14px",display:"flex",alignItems:"center",justifyContent:"center",
-    flexShrink:0,position:"relative",boxSizing:"border-box"}}>
-    <div style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",
-      fontFamily:"'Black Ops One',cursive",fontSize:9,letterSpacing:1}}>
-      <span style={{color:"#8b5cf6"}}>DEGEN</span><span style={{color:GREEN}}>SAFE</span><span style={{color:"#444"}}>.FUN</span>
-    </div>
-    <div style={{display:"flex",alignItems:"center",gap:10}}>
-      <Skull sz={34}/>
-      <div style={{textAlign:"center",lineHeight:1}}>
-        <div style={{display:"flex",alignItems:"center",gap:5,justifyContent:"center",marginBottom:1}}>
-          <div style={{width:20,height:1,background:GREEN,opacity:.5}}/>
-          <span style={{fontFamily:"'Black Ops One',cursive",fontSize:7,color:"#666",letterSpacing:4}}>PROJECT</span>
-          <div style={{width:20,height:1,background:GREEN,opacity:.5}}/>
+function Header() {
+  return (
+    <div style={{ width:"100%", background:"#050505", borderBottom:"2px solid #111", padding:"10px 16px", display:"flex", alignItems:"center", justifyContent:"center", boxSizing:"border-box", flexShrink:0, position:"relative" }}>
+      <div style={{ position:"absolute", right:16, top:"50%", transform:"translateY(-50%)", textAlign:"right" }}>
+        <div style={{ fontSize:7, color:"#333", letterSpacing:2 }}>POWERED BY</div>
+        <div style={{ fontFamily:"'Black Ops One',cursive", fontSize:11, letterSpacing:2 }}>
+          <span style={{ color:"#8b5cf6" }}>DEGEN</span><span style={{ color:"#22c55e" }}>SAFE</span><span style={{ color:"#444" }}>.FUN</span>
         </div>
-        <div style={{fontFamily:"'Black Ops One',cursive",fontSize:20,color:GREEN,letterSpacing:4,textShadow:"0 0 16px #22c55e88"}}>FREEDOM</div>
-        <div style={{fontFamily:"'Black Ops One',cursive",fontSize:9,color:"#8b5cf6",letterSpacing:4,textShadow:"0 0 8px #8b5cf666"}}>ASSOCIATIONS</div>
       </div>
-      <Skull sz={34}/>
-    </div>
-  </div>
-);
-
-const Footer = () => (
-  <div style={{width:"100%",background:"#050505",borderTop:"1px solid #111",padding:"5px",
-    display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-    <span style={{fontFamily:"'Black Ops One',cursive",fontSize:10,letterSpacing:2}}>
-      <span style={{color:"#8b5cf6"}}>DEGEN</span><span style={{color:GREEN}}>SAFE</span><span style={{color:"#444"}}>.FUN</span>
-    </span>
-  </div>
-);
-
-const TimerBar = ({secs,max,warn=10}) => {
-  const hot = secs<=warn;
-  return (
-    <div style={{display:"flex",alignItems:"center",gap:5,flex:1,maxWidth:120}}>
-      <div style={{flex:1,height:4,background:"#111",borderRadius:2,overflow:"hidden"}}>
-        <div style={{width:`${(secs/max)*100}%`,height:"100%",background:hot?"#ef4444":GREEN,transition:"width 1s linear",borderRadius:2}}/>
+      <div style={{ display:"flex", alignItems:"center", gap:14 }}>
+        <Skull size={44}/>
+        <div style={{ textAlign:"center" }}>
+          <div style={{ display:"flex", alignItems:"center", gap:8, justifyContent:"center" }}>
+            <div style={{ width:32, height:1, background:"#22c55e", opacity:.5 }}/>
+            <div style={{ fontFamily:"'Black Ops One',cursive", fontSize:10, color:"#888", letterSpacing:6, lineHeight:1 }}>PROJECT</div>
+            <div style={{ width:32, height:1, background:"#22c55e", opacity:.5 }}/>
+          </div>
+          <div style={{ fontFamily:"'Black Ops One',cursive", fontSize:28, color:"#22c55e", letterSpacing:6, lineHeight:1.1, textShadow:"0 0 24px #22c55e99" }}>FREEDOM</div>
+          <div style={{ fontFamily:"'Black Ops One',cursive", fontSize:12, color:"#8b5cf6", letterSpacing:6, lineHeight:1, textShadow:"0 0 12px #8b5cf677" }}>ASSOCIATIONS</div>
+        </div>
+        <Skull size={44}/>
       </div>
-      <span style={{fontFamily:"monospace",fontSize:11,minWidth:24,color:hot?"#ef4444":"#555",fontWeight:hot?700:400}}>{secs}s</span>
-    </div>
-  );
-};
-
-/* ════════════════════════════════════════
-   FIELD CELL
-   - hidden: ID only, green border, clickable
-   - open: shows clue PERMANENTLY (green glow)
-   - solved: shows answer, colored by player
-   
-   3:1 ratio = width is 3x height
-   Height ≈ 56px → Width fills container
-════════════════════════════════════════ */
-function Field({field, isOpen, isSolved, solvedBy, canClick, onReveal}) {
-  const pclr = solvedBy === "p1" ? P1CLR : P2CLR;
-
-  // SOLVED — player color
-  if (isSolved) return (
-    <div style={{
-      background: `${pclr}25`,
-      border: `2px solid ${pclr}`,
-      borderRadius: 6,
-      height: 56,
-      display: "flex",
-      flexDirection: "column",
-      alignItems: "center",
-      justifyContent: "center",
-      textAlign: "center",
-      padding: "4px 6px",
-      boxSizing: "border-box",
-    }}>
-      <div style={{fontSize:12,fontWeight:900,color:pclr,letterSpacing:1,lineHeight:1.2}}>{field.answer}</div>
-      <div style={{fontSize:8,color:`${pclr}99`,marginTop:2,lineHeight:1.2}}>{field.clue}</div>
-    </div>
-  );
-
-  // OPEN — clue permanently visible, green glow
-  if (isOpen) return (
-    <div style={{
-      background: "#081408",
-      border: `2px solid ${GREEN}`,
-      borderRadius: 6,
-      height: 56,
-      display: "flex",
-      flexDirection: "column",
-      alignItems: "center",
-      justifyContent: "center",
-      textAlign: "center",
-      padding: "4px 6px",
-      boxSizing: "border-box",
-      boxShadow: `0 0 10px ${GREEN}55`,
-    }}>
-      <div style={{fontSize:8,color:`${GREEN}88`,marginBottom:2,letterSpacing:1,lineHeight:1}}>{field.id}</div>
-      <div style={{fontSize:11,fontWeight:700,color:"#fff",lineHeight:1.3}}>{field.clue}</div>
-    </div>
-  );
-
-  // HIDDEN
-  return (
-    <div
-      onClick={canClick ? () => onReveal(field.id) : undefined}
-      style={{
-        background: canClick ? "#091209" : "#060606",
-        border: `2px solid ${GREEN}`,
-        borderRadius: 6,
-        height: 56,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        cursor: canClick ? "pointer" : "default",
-        boxSizing: "border-box",
-        transition: "background .15s, box-shadow .15s",
-        WebkitTapHighlightColor: "transparent",
-      }}
-      onMouseEnter={e => { if(canClick) { e.currentTarget.style.background="#0f1f0f"; e.currentTarget.style.boxShadow=`0 0 12px ${GREEN}55`; }}}
-      onMouseLeave={e => { if(canClick) { e.currentTarget.style.background="#091209"; e.currentTarget.style.boxShadow="none"; }}}
-      onTouchStart={e => { if(canClick) e.currentTarget.style.background="#0f1f0f"; }}
-      onTouchEnd={e => { if(canClick) e.currentTarget.style.background="#091209"; }}
-    >
-      <span style={{fontSize:13,fontWeight:900,color:canClick?`${GREEN}99`:"#1e1e1e",letterSpacing:2}}>{field.id}</span>
     </div>
   );
 }
 
-/* ════════════════════════════════════════
-   GUESS BOX (col theme / final)
-════════════════════════════════════════ */
-function GuessBox({label, solved, solvedText, solvedBy, disabled, onGuess, color}) {
-  const [v,setV] = useState("");
-  const [bad,setBad] = useState(false);
+function Footer() {
+  return (
+    <div style={{ width:"100%", background:"#050505", borderTop:"1px solid #111", padding:"6px 16px", display:"flex", alignItems:"center", justifyContent:"center", gap:8, boxSizing:"border-box", flexShrink:0 }}>
+      <div style={{ width:20, height:1, background:"#8b5cf6", opacity:.3 }}/>
+      <span style={{ fontSize:9, color:"#2a2a2a", letterSpacing:2 }}>POWERED BY</span>
+      <span style={{ fontFamily:"'Black Ops One',cursive", fontSize:13, letterSpacing:2 }}>
+        <span style={{ color:"#8b5cf6" }}>DEGEN</span><span style={{ color:"#22c55e" }}>SAFE</span><span style={{ color:"#444" }}>.FUN</span>
+      </span>
+      <div style={{ width:20, height:1, background:"#22c55e", opacity:.3 }}/>
+    </div>
+  );
+}
 
-  if (solved) {
-    const sc = solvedBy === "p1" ? P1CLR : solvedBy === "p2" ? P2CLR : color;
-    return (
-      <div style={{background:`${sc}18`,border:`2px solid ${sc}`,borderRadius:7,
-        padding:"6px 10px",display:"flex",flexDirection:"column",alignItems:"center",
-        justifyContent:"center",minHeight:52}}>
-        <div style={{fontSize:7,color:`${sc}88`,letterSpacing:1,marginBottom:2}}>{label}</div>
-        <div style={{fontSize:11,fontWeight:900,color:sc,letterSpacing:1}}>✓ {solvedText}</div>
+function TimerBar({ secs, max, warn = 10 }) {
+  const pct = (secs / max) * 100;
+  const hot = secs <= warn;
+  return (
+    <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+      <div style={{ flex:1, height:4, background:"#111", borderRadius:2, overflow:"hidden" }}>
+        <div style={{ width:`${pct}%`, height:"100%", background:hot?"#ef4444":"#22c55e", transition:"width 1s linear, background .3s", borderRadius:2 }}/>
       </div>
-    );
+      <span style={{ fontFamily:"monospace", fontSize:11, minWidth:24, color:hot?"#ef4444":"#555" }}>{secs}s</span>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════
+   FIELD CELL — 1:1 square, click = show clue only
+══════════════════════════════════════════════════════ */
+function FieldCell({ field, state, canClick, myTurn, accent, onReveal }) {
+  // state: "hidden" | "revealed_clue" | "solved"
+
+  if (state === "solved") return (
+    <div style={{ ...sq, background:"#111", border:`2px solid ${accent}88`, flexDirection:"column", gap:3, animation:"pop .3s ease" }}>
+      <div style={{ fontSize:11, fontWeight:900, color:accent, letterSpacing:1, textAlign:"center" }}>{field.answer}</div>
+      <div style={{ fontSize:9, color:"#555", textAlign:"center", lineHeight:1.2, padding:"0 4px" }}>{field.clue}</div>
+    </div>
+  );
+
+  if (state === "revealed_clue") return (
+    <div style={{ ...sq, background:"#0c0c1a", border:`2px solid ${accent}`, boxShadow:`0 0 12px ${accent}55`, flexDirection:"column", gap:3 }}>
+      <div style={{ fontSize:8, color:accent, letterSpacing:1, textAlign:"center", fontWeight:700 }}>CLUE</div>
+      <div style={{ fontSize:11, color:"#fff", textAlign:"center", lineHeight:1.3, padding:"0 4px", fontWeight:600 }}>{field.clue}</div>
+    </div>
+  );
+
+  // hidden
+  return (
+    <div onClick={canClick && myTurn ? () => onReveal(field.id) : undefined}
+      style={{ ...sq, background:myTurn&&canClick?"#0e0e1a":"#070710", border:`1px solid ${myTurn&&canClick?accent+"55":"#1a1a1a"}`, cursor:myTurn&&canClick?"pointer":"default" }}
+      onMouseEnter={e => { if (myTurn && canClick) { e.currentTarget.style.background="#16162a"; e.currentTarget.style.borderColor=accent+"99"; e.currentTarget.style.boxShadow=`0 0 8px ${accent}33`; }}}
+      onMouseLeave={e => { if (myTurn && canClick) { e.currentTarget.style.background="#0e0e1a"; e.currentTarget.style.borderColor=accent+"55"; e.currentTarget.style.boxShadow="none"; }}}>
+      <div style={{ fontSize:13, fontWeight:900, color:myTurn&&canClick?"#444":"#1f1f1f", letterSpacing:1 }}>{field.id}</div>
+    </div>
+  );
+}
+const sq = { width:"100%", aspectRatio:"1/1", display:"flex", alignItems:"center", justifyContent:"center", borderRadius:8, userSelect:"none", boxSizing:"border-box", transition:"all .15s" };
+
+/* ══════════════════════════════════════════════════════
+   GUESS INPUT — for column theme and final answer
+══════════════════════════════════════════════════════ */
+function GuessInput({ label, solved, solvedText, disabled, onGuess, accent, placeholder }) {
+  const [val, setVal] = useState("");
+  const [wrong, setWrong] = useState(false);
+
+  if (solved) return (
+    <div style={{ ...gi, background:accent+"22", border:`1px solid ${accent}`, justifyContent:"center" }}>
+      <span style={{ color:accent, fontWeight:700, fontSize:11, letterSpacing:1 }}>✓ {solvedText}</span>
+    </div>
+  );
+
+  const sub = () => {
+    if (!val.trim() || disabled) return;
+    if (!onGuess(val)) { setWrong(true); setTimeout(() => setWrong(false), 600); }
+    else setVal("");
+  };
+
+  return (
+    <div style={{ ...gi, animation:wrong?"shake .4s":"none", opacity:disabled?.3:1 }}>
+      <span style={{ fontSize:9, color:"#555", whiteSpace:"nowrap", minWidth:45 }}>{label}</span>
+      <input value={val} onChange={e => setVal(e.target.value)} onKeyDown={e => e.key === "Enter" && sub()} disabled={disabled}
+        placeholder={placeholder || "guess..."} style={{ flex:1, background:"transparent", border:"none", color:disabled?"#333":"#ddd", fontSize:11, outline:"none", fontFamily:"inherit", minWidth:0 }}/>
+      <button onClick={sub} disabled={disabled} style={{ background:disabled?"#222":accent, border:"none", borderRadius:5, padding:"4px 10px", color:disabled?"#444":"#fff", fontWeight:700, cursor:disabled?"default":"pointer", fontSize:10, flexShrink:0 }}>OK</button>
+    </div>
+  );
+}
+const gi = { display:"flex", alignItems:"center", gap:8, background:"#0d0d0d", border:"1px solid #222", borderRadius:7, padding:"6px 10px", width:"100%", boxSizing:"border-box" };
+
+function LoadingScreen({ msg }) {
+  return (
+    <div style={S.root}><style>{CSS}</style><Header/>
+      <div style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:16 }}>
+        <div style={{ width:52, height:52, border:"3px solid #8b5cf622", borderTop:"3px solid #8b5cf6", borderRadius:"50%", animation:"spin 1s linear infinite" }}/>
+        <div style={{ color:"#555", fontSize:13, letterSpacing:2 }}>{msg}</div>
+      </div>
+    <Footer/></div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════
+   MAIN APP
+══════════════════════════════════════════════════════ */
+export default function App() {
+  const [uid, setUid] = useState(null);
+  const [screen, setScreen] = useState("lobby");
+  const [playerName, setPlayerName] = useState("");
+  const [wager, setWager] = useState(100);
+  const [lobbyMode, setLobbyMode] = useState("create");
+  const [joinId, setJoinId] = useState("");
+  const [walletAddr, setWalletAddr] = useState(null);
+  const [walletLoading, setWalletLoading] = useState(false);
+  const [loadingMsg, setLoadingMsg] = useState("");
+  const [gameId, setGameId] = useState(null);
+  const [myRole, setMyRole] = useState(null);
+  const [gameState, setGameState] = useState(null);
+  const [gameStarted, setGameStarted] = useState(false);
+  const [turnTimer, setTurnTimer] = useState(TURN_TIME);
+  const [finalTimer, setFinalTimer] = useState(FINAL_TIME);
+  const [idleTimer, setIdleTimer] = useState(IDLE_TIME);
+  const [usedClick, setUsedClick] = useState(false);
+  const [log, setLog] = useState([]);
+
+  const turnRef = useRef();
+  const finalRef = useRef();
+  const idleRef = useRef();
+  const lastAct = useRef(Date.now());
+  const gameRef = useRef(null);
+
+  const addLog = m => setLog(p => [m, ...p].slice(0, 6));
+  const touch = () => { lastAct.current = Date.now(); setIdleTimer(IDLE_TIME); };
+
+  useEffect(() => { signInAnonymously(auth).then(r => setUid(r.user.uid)).catch(console.error); }, []);
+  useEffect(() => { if (window.solana?.isPhantom && window.solana.publicKey) setWalletAddr(window.solana.publicKey.toString()); }, []);
+
+  // Game listener
+  useEffect(() => {
+    if (!gameId) return;
+    gameRef.current = ref(db, `assoc_games/${gameId}`);
+    const unsub = onValue(gameRef.current, snap => {
+      const d = snap.val();
+      if (!d) return;
+      setGameState(d);
+      setUsedClick(d[`uc_${myRole}`] || false);
+      if (d.status === "finished") setScreen("result");
+      if (d.status === "active" && d.p1 && d.p2 && !gameStarted) {
+        setGameStarted(true);
+        lastAct.current = Date.now();
+      }
+    });
+    return () => unsub();
+  }, [gameId, myRole]);
+
+  // Turn timer
+  useEffect(() => {
+    if (screen !== "game" || !gameStarted || !gameState || gameState.finalPhase || gameState.status === "finished") return;
+    clearInterval(turnRef.current);
+    setTurnTimer(TURN_TIME);
+    turnRef.current = setInterval(() => {
+      setTurnTimer(t => {
+        if (t <= 1) { clearInterval(turnRef.current); if (gameState.currentTurn === myRole) passTurn(); return TURN_TIME; }
+        return t - 1;
+      });
+    }, 1000);
+    return () => clearInterval(turnRef.current);
+  }, [gameState?.currentTurn, screen, gameState?.finalPhase, gameStarted]);
+
+  // Final timer
+  useEffect(() => {
+    if (!gameState?.finalPhase || gameState?.status === "finished") return;
+    clearInterval(finalRef.current);
+    setFinalTimer(FINAL_TIME);
+    finalRef.current = setInterval(() => {
+      setFinalTimer(t => {
+        if (t <= 1) { clearInterval(finalRef.current); const s = gameState.scores || { p1:0, p2:0 }; endGame(s.p1 >= s.p2 ? "p1" : "p2", "Time's up — winner by points!"); return 0; }
+        return t - 1;
+      });
+    }, 1000);
+    return () => clearInterval(finalRef.current);
+  }, [gameState?.finalPhase, gameState?.status]);
+
+  // Idle timer — only when both players in
+  useEffect(() => {
+    if (screen !== "game" || !gameStarted || gameState?.status === "finished") return;
+    clearInterval(idleRef.current);
+    idleRef.current = setInterval(() => {
+      const rem = IDLE_TIME - Math.floor((Date.now() - lastAct.current) / 1000);
+      setIdleTimer(Math.max(0, rem));
+      if (rem <= 0) { clearInterval(idleRef.current); endGame(myRole === "p1" ? "p2" : "p1", "Idle 60s — opponent wins!"); }
+    }, 1000);
+    return () => clearInterval(idleRef.current);
+  }, [screen, myRole, gameState?.status, gameStarted]);
+
+  // All fields open → final phase
+  useEffect(() => {
+    if (!gameState || gameState.finalPhase || gameState.status === "finished") return;
+    const b = gameState.board; if (!b) return;
+    const total = b.columns.reduce((s, c) => s + c.fields.length, 0);
+    if (Object.keys(gameState.revealed || {}).length >= total && gameState.currentTurn === myRole) {
+      update(gameRef.current, { finalPhase: true });
+      addLog("🎯 All fields open! 60s for the final answer!");
+    }
+  }, [gameState]);
+
+  // Wait for P2
+  useEffect(() => {
+    if (screen !== "waiting" || !gameId) return;
+    const unsub = onValue(ref(db, `assoc_games/${gameId}`), snap => {
+      const d = snap.val();
+      if (d?.status === "active" && d.p1 && d.p2) {
+        setGameState(d); setGameStarted(true); lastAct.current = Date.now();
+        setScreen("game"); addLog("Opponent joined! Your turn! (You are P1)");
+      }
+    });
+    return () => unsub();
+  }, [screen, gameId]);
+
+  async function handleConnectWallet() {
+    setWalletLoading(true);
+    const addr = await connectPhantom();
+    if (addr) setWalletAddr(addr);
+    setWalletLoading(false);
   }
 
-  const go = () => {
-    if(!v.trim()||disabled) return;
-    if(!onGuess(v)) { setBad(true); setTimeout(()=>setBad(false),600); }
-    else setV("");
-  };
-
-  return (
-    <div style={{background:"#080808",border:`2px solid ${bad?"#ef4444":disabled?"#1a1a1a":color}`,
-      borderRadius:7,padding:"6px 8px",display:"flex",flexDirection:"column",
-      justifyContent:"space-between",opacity:disabled?.25:1,
-      animation:bad?"shake .4s":"none",minHeight:52,transition:"opacity .2s",
-      boxSizing:"border-box"}}>
-      <div style={{fontSize:7,color:disabled?"#333":color,letterSpacing:1,fontWeight:700,marginBottom:4}}>{label}</div>
-      <div style={{display:"flex",gap:4}}>
-        <input value={v} onChange={e=>setV(e.target.value.toUpperCase())}
-          onKeyDown={e=>e.key==="Enter"&&go()} disabled={disabled}
-          placeholder="ANSWER..." style={{flex:1,background:"transparent",border:"none",
-          color:disabled?"#333":"#fff",fontSize:11,fontWeight:700,outline:"none",
-          fontFamily:"inherit",minWidth:0,letterSpacing:1}}/>
-        <button onClick={go} disabled={disabled} style={{
-          background:disabled?"#1a1a1a":color,border:"none",borderRadius:5,
-          padding:"4px 10px",color:disabled?"#333":"#000",fontWeight:900,
-          cursor:disabled?"default":"pointer",fontSize:10,flexShrink:0,
-          minWidth:36}}>OK</button>
-      </div>
-    </div>
-  );
-}
-
-/* ════════════════════════════════════════
-   LEADERBOARD
-════════════════════════════════════════ */
-function Leaderboard({onClose}) {
-  const [tab,setTab] = useState("points");
-  const [rows,setRows] = useState([]);
-  const [loading,setLoading] = useState(true);
-
-  useEffect(()=>{
-    get(ref(db,"leaderboard")).then(snap=>{
-      const d=snap.val()||{};
-      setRows(Object.values(d).filter(x=>x?.name));
-      setLoading(false);
+  async function createGame() {
+    if (!playerName.trim() || !uid) return;
+    if (!walletAddr) { alert("Please connect Phantom wallet first!"); return; }
+    setScreen("loading"); setLoadingMsg("Generating board with AI...");
+    const board = await generateBoard();
+    setLoadingMsg("Confirming wager...");
+    const tx = await sendWager(wager, walletAddr);
+    if (!tx.success) { alert("Wager failed: " + tx.error); setScreen("lobby"); return; }
+    setLoadingMsg("Creating room...");
+    const gid = genId();
+    await set(ref(db, `assoc_games/${gid}`), {
+      p1: uid, p1name: playerName, p1wallet: walletAddr,
+      p2: null, p2name: null, p2wallet: null,
+      status: "waiting", wager, board,
+      scores: { p1:0, p2:0 }, revealed: {},
+      colSolved: { A:false, B:false, C:false, D:false },
+      finalSolved: false, finalPhase: false, currentTurn: "p1",
+      uc_p1: false, uc_p2: false,
+      lastActivity: Date.now(), winner: null, p1tx: tx.txid
     });
-  },[]);
+    setGameId(gid); setMyRole("p1"); setGameStarted(false); setScreen("waiting");
+  }
 
-  const sorted = [...rows].sort((a,b) =>
-    tab==="wins" ? (b.wins||0)-(a.wins||0) :
-    tab==="tokens" ? (b.tokensWon||0)-(a.tokensWon||0) :
-    (b.points||0)-(a.points||0)
-  ).slice(0,10);
+  async function joinGame() {
+    const gid = joinId.trim().toUpperCase();
+    if (!playerName.trim() || !uid || !gid) return;
+    if (!walletAddr) { alert("Please connect Phantom wallet first!"); return; }
+    setScreen("loading"); setLoadingMsg("Confirming wager...");
+    const tx = await sendWager(wager, walletAddr);
+    if (!tx.success) { alert("Wager failed: " + tx.error); setScreen("lobby"); return; }
+    setLoadingMsg("Joining room...");
+    const gRef = ref(db, `assoc_games/${gid}`);
+    const snap = await get(gRef);
+    const d = snap.val();
+    if (!d) { alert("Room not found!"); setScreen("lobby"); return; }
+    if (d.status !== "waiting") { alert("Room already started or full!"); setScreen("lobby"); return; }
+    await update(gRef, { p2: uid, p2name: playerName, p2wallet: walletAddr, status: "active", currentTurn: "p1", lastActivity: Date.now(), p2tx: tx.txid });
+    setWager(d.wager); setGameId(gid); setMyRole("p2"); setGameStarted(true); lastAct.current = Date.now();
+    setScreen("game"); addLog("Joined! You are Player 2. Player 1 goes first.");
+  }
 
-  return (
-    <div style={{position:"fixed",inset:0,background:"#000d",display:"flex",alignItems:"center",justifyContent:"center",zIndex:999,padding:12}}>
-      <div style={{background:"#0a0a14",border:`2px solid ${GREEN}44`,borderRadius:14,padding:18,width:"100%",maxWidth:380}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-          <span style={{fontFamily:"'Black Ops One',cursive",fontSize:14,color:"#a78bfa",letterSpacing:3}}>🏆 LEADERBOARD</span>
-          <button onClick={onClose} style={{background:"none",border:"none",color:"#555",fontSize:20,cursor:"pointer",lineHeight:1,padding:4}}>✕</button>
-        </div>
-        <div style={{display:"flex",gap:3,marginBottom:12,background:"#070710",borderRadius:7,padding:3}}>
-          {[["points","🏅 POINTS"],["wins","🏆 WINS"],["tokens","💰 TOKENS"]].map(([k,l])=>(
-            <button key={k} onClick={()=>setTab(k)} style={{flex:1,padding:"7px 0",borderRadius:5,
-              background:tab===k?"#8b5cf6":"transparent",color:tab===k?"#fff":"#444",
-              border:"none",fontFamily:"inherit",fontSize:9,fontWeight:700,cursor:"pointer",letterSpacing:1}}>
-              {l}
-            </button>
-          ))}
-        </div>
-        {loading ? <div style={{textAlign:"center",color:"#444",padding:20}}>LOADING...</div> :
-         sorted.length===0 ? <div style={{textAlign:"center",color:"#333",padding:20,fontSize:11}}>NO GAMES YET</div> :
-         sorted.map((r,i)=>(
-          <div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 10px",
-            background:i===0?"#8b5cf611":"#070710",borderRadius:7,marginBottom:4,
-            border:`1px solid ${i===0?"#8b5cf633":"#111"}`}}>
-            <span style={{fontSize:16,minWidth:24}}>{"🥇🥈🥉".split("").slice(i*2,i*2+2).join("")||`${i+1}.`}</span>
-            <span style={{flex:1,fontSize:12,color:"#ccc",fontWeight:700,letterSpacing:1}}>{r.name}</span>
-            <span style={{fontWeight:900,fontSize:13,
-              color:tab==="wins"?GREEN:tab==="tokens"?"#f4a261":"#a78bfa"}}>
-              {tab==="points"?`${r.points||0}`:tab==="wins"?`${r.wins||0}W`:`${r.tokensWon||0}🪙`}
-            </span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-const Loading = ({msg}) => (
-  <div style={S.root}><style>{CSS}</style><Header/>
-    <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:14}}>
-      <div style={{width:44,height:44,border:`3px solid ${GREEN}22`,borderTop:`3px solid ${GREEN}`,borderRadius:"50%",animation:"spin 1s linear infinite"}}/>
-      <div style={{color:"#555",fontSize:11,letterSpacing:2}}>{msg}</div>
-    </div>
-  <Footer/></div>
-);
-
-/* ════════════════════════════════════════
-   MAIN APP
-════════════════════════════════════════ */
-export default function App() {
-  const [uid,setUid]     = useState(null);
-  const [screen,setScr]  = useState("lobby");
-  const [name,setName]   = useState("");
-  const [wager,setWager] = useState(100);
-  const [mode,setMode]   = useState("create");
-  const [roomIn,setRoom] = useState("");
-  const [wallet,setWal]  = useState(null);
-  const [wLoad,setWL]    = useState(false);
-  const [lMsg,setLMsg]   = useState("");
-  const [showLB,setLB]   = useState(false);
-  const [gameId,setGId]  = useState(null);
-  const [myRole,setRole] = useState(null);
-  const [gs,setGs]       = useState(null);
-  const [started,setSt]  = useState(false);
-  const [tTurn,setTT]    = useState(T_TURN);
-  const [tFinal,setTF]   = useState(T_FINAL);
-  const [tIdle,setTI]    = useState(T_IDLE);
-  const [log,setLog]     = useState([]);
-
-  const rT=useRef(); const rF=useRef(); const rI=useRef();
-  const la=useRef(Date.now());
-  const gR=useRef(null);
-
-  const L = m => setLog(p=>[m,...p].slice(0,5));
-  const touch = () => { la.current=Date.now(); setTI(T_IDLE); };
-
-  useEffect(()=>{ signInAnonymously(auth).then(r=>setUid(r.user.uid)).catch(console.error); },[]);
-  useEffect(()=>{ if(window.solana?.isPhantom&&window.solana.publicKey) setWal(window.solana.publicKey.toString()); },[]);
-
-  useEffect(()=>{
-    if(!gameId) return;
-    gR.current=ref(db,`ag3/${gameId}`);
-    return onValue(gR.current,snap=>{
-      const d=snap.val(); if(!d) return;
-      setGs(d);
-      if(d.status==="finished") setScr("result");
-      if(d.status==="active"&&d.p1&&d.p2&&!started){ setSt(true); la.current=Date.now(); }
-    });
-  },[gameId,started]);
-
-  // turn timer
-  useEffect(()=>{
-    if(screen!=="game"||!started||!gs||gs.finalPhase||gs.status==="finished") return;
-    clearInterval(rT.current); setTT(T_TURN);
-    rT.current=setInterval(()=>setTT(t=>{
-      if(t<=1){ clearInterval(rT.current); if(gs.currentTurn===myRole) pass(); return T_TURN; }
-      return t-1;
-    }),1000);
-    return ()=>clearInterval(rT.current);
-  },[gs?.currentTurn,screen,gs?.finalPhase,started]);
-
-  // final timer
-  useEffect(()=>{
-    if(!gs?.finalPhase||gs?.status==="finished") return;
-    clearInterval(rF.current); setTF(T_FINAL);
-    rF.current=setInterval(()=>setTF(t=>{
-      if(t<=1){ clearInterval(rF.current); const s=gs.scores||{p1:0,p2:0}; end(s.p1>=s.p2?"p1":"p2","TIME'S UP — WINNER BY POINTS!"); return 0; }
-      return t-1;
-    }),1000);
-    return ()=>clearInterval(rF.current);
-  },[gs?.finalPhase,gs?.status]);
-
-  // idle timer — only after both players in
-  useEffect(()=>{
-    if(screen!=="game"||!started||gs?.status==="finished") return;
-    clearInterval(rI.current);
-    rI.current=setInterval(()=>{
-      const rem=T_IDLE-Math.floor((Date.now()-la.current)/1000);
-      setTI(Math.max(0,rem));
-      if(rem<=0){ clearInterval(rI.current); end(myRole==="p1"?"p2":"p1","IDLE 60S — OPPONENT WINS!"); }
-    },1000);
-    return ()=>clearInterval(rI.current);
-  },[screen,started,myRole,gs?.status]);
-
-  // all fields solved → final phase
-  useEffect(()=>{
-    if(!gs||gs.finalPhase||gs.status==="finished") return;
-    const b=gs.board; if(!b) return;
-    const total=b.columns.reduce((s,c)=>s+c.fields.length,0);
-    if(Object.keys(gs.solved||{}).length>=total&&gs.currentTurn===myRole){
-      update(gR.current,{finalPhase:true});
-      L("🎯 ALL FIELDS OPEN! 60S FOR FINAL ANSWER!");
-    }
-  },[gs]);
-
-  // wait for p2
-  useEffect(()=>{
-    if(screen!=="waiting"||!gameId) return;
-    return onValue(ref(db,`ag3/${gameId}`),snap=>{
-      const d=snap.val();
-      if(d?.status==="active"&&d.p1&&d.p2){ setGs(d); setSt(true); la.current=Date.now(); setScr("game"); L("OPPONENT JOINED! YOUR TURN!"); }
-    });
-  },[screen,gameId]);
-
-  const connectW = async()=>{ setWL(true); const a=await connectPhantom(); if(a) setWal(a); setWL(false); };
-
-  const create = async()=>{
-    if(!name.trim()||!uid||!wallet) return;
-    setScr("loading"); setLMsg("GENERATING BOARD...");
-    const board=await aiBoard();
-    setLMsg("CONFIRMING WAGER...");
-    const tx=await signWager(wager);
-    if(!tx.ok){ alert("WAGER FAILED: "+tx.err); setScr("lobby"); return; }
-    const gid=uid6();
-    await set(ref(db,`ag3/${gid}`),{
-      p1:uid,p1name:name,p1wallet:wallet,
-      p2:null,p2name:null,p2wallet:null,
-      status:"waiting",wager,board,
-      scores:{p1:0,p2:0},
-      // opened: fieldId → true (permanently open, shows clue)
-      opened:{},
-      // solved: fieldId → "p1" or "p2"
-      solved:{},
-      colSolved:{A:null,B:null,C:null,D:null},
-      finalSolved:null,finalPhase:false,currentTurn:"p1",
-      lastActivity:Date.now(),winner:null,p1tx:tx.tx
-    });
-    setGId(gid); setRole("p1"); setSt(false); setScr("waiting");
-  };
-
-  const join = async()=>{
-    const gid=roomIn.trim().toUpperCase();
-    if(!name.trim()||!uid||!wallet||!gid) return;
-    setScr("loading"); setLMsg("CONFIRMING WAGER...");
-    const tx=await signWager(wager);
-    if(!tx.ok){ alert("WAGER FAILED: "+tx.err); setScr("lobby"); return; }
-    setLMsg("JOINING ROOM...");
-    const snap=await get(ref(db,`ag3/${gid}`));
-    const d=snap.val();
-    if(!d){ alert("ROOM NOT FOUND!"); setScr("lobby"); return; }
-    if(d.status!=="waiting"){ alert("ROOM ALREADY STARTED!"); setScr("lobby"); return; }
-    await update(ref(db,`ag3/${gid}`),{p2:uid,p2name:name,p2wallet:wallet,status:"active",currentTurn:"p1",lastActivity:Date.now(),p2tx:tx.tx});
-    setWager(d.wager); setGId(gid); setRole("p2"); setSt(true); la.current=Date.now();
-    setScr("game"); L("JOINED! YOU ARE PLAYER 2.");
-  };
-
-  // click field = open it (shows clue permanently, never hides)
-  const reveal = async(fid)=>{
-    if(!isMy||gs?.finalPhase||gs?.solved?.[fid]||gs?.opened?.[fid]) return;
-    // Only allow one NEW open per turn (can still guess multiple times)
-    // Check if current turn already opened a field
-    const alreadyOpened = gs?.turnOpened;
-    if(alreadyOpened) return; // already used click this turn
+  // Reveal field — just mark as revealed (shows clue), end turn
+  async function revealField(fid) {
+    if (!isMy || usedClick || gameState?.finalPhase) return;
     touch();
-    await update(gR.current,{
-      [`opened/${fid}`]:true,   // PERMANENT — never removed
-      turnOpened:fid,            // tracks this turn's click
-      lastActivity:Date.now()
+    // Mark field as having clue shown (not yet solved)
+    await update(gameRef.current, {
+      [`revealed/${fid}`]: "clue", // "clue" = clue shown, not solved
+      [`uc_${myRole}`]: true,
+      lastActivity: Date.now()
     });
-    L(`FIELD ${fid} REVEALED — NOW GUESS A THEME OR FINAL!`);
-  };
+    addLog(`Field ${fid} revealed — clue shown!`);
+    // After 5 seconds, pass turn
+    setTimeout(() => passTurn(), 5000);
+  }
 
-  const guessCol = async(colId,val)=>{
+  // Guess column theme
+  async function guessCol(cid, val) {
     touch();
-    const col=gs.board.columns.find(c=>c.id===colId);
-    if(!col||gs.colSolved?.[colId]) return false;
-    if(hit(val,col.theme)){
-      const upd={[`colSolved/${colId}`]:myRole,[`scores/${myRole}`]:(gs.scores[myRole]||0)+20,lastActivity:Date.now()};
-      col.fields.forEach(f=>{ upd[`solved/${f.id}`]=myRole; upd[`opened/${f.id}`]=true; });
-      await update(gR.current,upd);
-      L(`✅ COLUMN ${colId}: "${col.theme}"! +20PTS`);
-      setTimeout(()=>pass(),500);
+    const col = gameState.board.columns.find(c => c.id === cid);
+    if (!col || gameState.colSolved?.[cid]) return false;
+    if (match(val, col.theme)) {
+      // Mark all fields in this column as solved
+      const updates = {};
+      col.fields.forEach(f => {
+        if (!gameState.revealed?.[f.id] || gameState.revealed[f.id] === "clue") {
+          updates[`revealed/${f.id}`] = "solved";
+        }
+      });
+      updates[`colSolved/${cid}`] = myRole;
+      updates[`scores/${myRole}`] = (gameState.scores[myRole] || 0) + 20;
+      updates.lastActivity = Date.now();
+      await update(gameRef.current, updates);
+      addLog(`✅ Column ${cid} theme: "${col.theme}" +20pts`);
       return true;
     }
-    L(`❌ WRONG THEME FOR COLUMN ${colId}`);
+    addLog(`❌ Wrong theme for column ${cid}`);
     return false;
-  };
+  }
 
-  const guessFinal = async(val)=>{
+  // Guess final answer
+  async function guessFinal(val) {
     touch();
-    if(hit(val,gs.board.final.answer)){
-      await update(gR.current,{finalSolved:myRole,[`scores/${myRole}`]:(gs.scores[myRole]||0)+30,lastActivity:Date.now()});
-      end(myRole,"FINAL ANSWER CORRECT! +30PTS");
+    if (match(val, gameState.board.final.answer)) {
+      await update(gameRef.current, {
+        finalSolved: myRole,
+        [`scores/${myRole}`]: (gameState.scores[myRole] || 0) + 30,
+        lastActivity: Date.now()
+      });
+      endGame(myRole, "Final answer correct! +30pts");
       return true;
     }
-    L("❌ WRONG FINAL ANSWER!");
+    addLog("❌ Wrong final answer!");
     return false;
-  };
+  }
 
-  const pass = async()=>{
-    const next=myRole==="p1"?"p2":"p1";
-    await update(gR.current,{currentTurn:next,turnOpened:null,lastActivity:Date.now()});
-  };
+  async function passTurn() {
+    const next = myRole === "p1" ? "p2" : "p1";
+    await update(gameRef.current, {
+      currentTurn: next,
+      [`uc_${myRole}`]: false,
+      lastActivity: Date.now()
+    });
+  }
 
-  const end = async(w,reason)=>{
-    if(!gR.current) return;
-    await update(gR.current,{status:"finished",winner:w,winReason:reason,finishedAt:Date.now()});
-    lb(w);
-  };
+  async function endGame(w, reason) {
+    if (!gameRef.current) return;
+    await update(gameRef.current, { status: "finished", winner: w, winReason: reason, finishedAt: Date.now() });
+    updateLeaderboard(w);
+  }
 
-  const lb = async(w)=>{
-    if(!gs) return;
-    const sc=gs.scores||{p1:0,p2:0};
-    for(const r of["p1","p2"]){
-      const u=gs[r]; if(!u) continue;
-      const lbr=ref(db,`leaderboard/${u}`);
-      const snap=await get(lbr);
-      const cur=snap.val()||{wins:0,losses:0,points:0,tokensWon:0};
-      await set(lbr,{name:r==="p1"?gs.p1name:gs.p2name,wins:(cur.wins||0)+(w===r?1:0),losses:(cur.losses||0)+(w===r?0:1),points:(cur.points||0)+(sc[r]||0),tokensWon:(cur.tokensWon||0)+(w===r?wager*2:0)});
+  async function updateLeaderboard(w) {
+    if (!gameState) return;
+    const scores = gameState.scores || { p1:0, p2:0 };
+    for (const r of ["p1", "p2"]) {
+      const u = gameState[r]; if (!u) continue;
+      const lbRef = ref(db, `leaderboard/${u}`);
+      const snap = await get(lbRef);
+      const curr = snap.val() || { wins:0, losses:0, points:0, tokensWon:0 };
+      await set(lbRef, { name: r === "p1" ? gameState.p1name : gameState.p2name, wins: (curr.wins||0)+(w===r?1:0), losses: (curr.losses||0)+(w===r?0:1), points: (curr.points||0)+(scores[r]||0), tokensWon: (curr.tokensWon||0)+(w===r?wager*2:0) });
     }
+  }
+
+  function resetGame() {
+    setScreen("lobby"); setGameId(null); setMyRole(null); setGameState(null);
+    setUsedClick(false); setLog([]); setJoinId(""); setGameStarted(false);
+  }
+
+  const board = gameState?.board || null;
+  const isMy = gameState?.currentTurn === myRole;
+  const scores = gameState?.scores || { p1:0, p2:0 };
+  const revealed = gameState?.revealed || {};
+  const colSolved = gameState?.colSolved || {};
+  const finalSolved = gameState?.finalSolved || false;
+  const finalPhase = gameState?.finalPhase || false;
+  const winner = gameState?.winner || null;
+  const winReason = gameState?.winReason || "";
+  const myName = myRole === "p1" ? gameState?.p1name || "P1" : gameState?.p2name || "P2";
+  const oppName = myRole === "p1" ? gameState?.p2name || "P2" : gameState?.p1name || "P1";
+
+  // Field state helper
+  const fieldState = (fid) => {
+    const r = revealed[fid];
+    if (!r) return "hidden";
+    if (r === "solved") return "solved";
+    return "revealed_clue";
   };
 
-  const reset = ()=>{ setScr("lobby"); setGId(null); setRole(null); setGs(null); setLog([]); setRoom(""); setSt(false); };
-
-  const board=gs?.board||null;
-  const isMy=gs?.currentTurn===myRole;
-  const scores=gs?.scores||{p1:0,p2:0};
-  const opened=gs?.opened||{};
-  const solved=gs?.solved||{};
-  const colSolved=gs?.colSolved||{};
-  const finalSolved=gs?.finalSolved||null;
-  const finalPhase=gs?.finalPhase||false;
-  const winner=gs?.winner||null;
-  const winReason=gs?.winReason||"";
-  const myName=myRole==="p1"?gs?.p1name||"P1":gs?.p2name||"P2";
-  const oppName=myRole==="p1"?gs?.p2name||"P2":gs?.p1name||"P1";
-
-  // can click a NEW field: my turn, haven't used turn click yet, game active
-  const canClick = isMy&&!gs?.turnOpened&&!finalPhase&&!winner&&gs?.status==="active"&&started;
-  // can guess: my turn, used click OR final phase
-  const canGuess = isMy&&(!!gs?.turnOpened||finalPhase)&&!winner&&gs?.status==="active"&&started;
+  const canClick = isMy && !usedClick && !finalPhase && !winner && gameState?.status === "active" && gameStarted;
+  const canGuess = isMy && !winner && gameState?.status === "active" && gameStarted;
 
   /* ── LOBBY ── */
-  if(screen==="lobby") return (
+  if (screen === "lobby") return (
     <div style={S.root}><style>{CSS}</style><Header/>
-    {showLB&&<Leaderboard onClose={()=>setLB(false)}/>}
-    <div style={{flex:1,overflowY:"auto",display:"flex",alignItems:"flex-start",justifyContent:"center",padding:12}}>
-      <div style={S.card}>
-        <div style={{marginBottom:12,padding:12,background:"#060606",borderRadius:8,border:"1px solid #1a1a1a"}}>
-          <div style={{fontSize:8,color:"#444",letterSpacing:2,marginBottom:6}}>PHANTOM WALLET</div>
-          {wallet?(
-            <div style={{display:"flex",alignItems:"center",gap:8}}>
-              <div style={{width:8,height:8,borderRadius:"50%",background:GREEN,boxShadow:`0 0 8px ${GREEN}`}}/>
-              <span style={{fontSize:10,color:GREEN,fontFamily:"monospace"}}>{wallet.slice(0,6)}...{wallet.slice(-4)}</span>
-              <span style={{fontSize:8,color:"#444",marginLeft:"auto"}}>✓ CONNECTED</span>
+      <div style={{ flex:1, overflowY:"auto", display:"flex", alignItems:"flex-start", justifyContent:"center", padding:"12px" }}>
+        <div style={S.card}>
+          <div style={{ marginBottom:14, padding:12, background:"#060606", borderRadius:8, border:"1px solid #1a1a1a" }}>
+            <div style={{ fontSize:9, color:"#444", letterSpacing:2, marginBottom:8 }}>PHANTOM WALLET</div>
+            {walletAddr ? (
+              <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                <div style={{ width:8, height:8, borderRadius:"50%", background:"#22c55e", boxShadow:"0 0 8px #22c55e" }}/>
+                <span style={{ fontSize:10, color:"#22c55e", fontFamily:"monospace" }}>{walletAddr.slice(0,6)}...{walletAddr.slice(-4)}</span>
+                <span style={{ fontSize:9, color:"#444", marginLeft:"auto" }}>✓ Connected</span>
+              </div>
+            ) : (
+              <button onClick={handleConnectWallet} disabled={walletLoading} style={{ width:"100%", padding:"9px 0", background:"linear-gradient(90deg,#8b5cf6,#7c3aed)", border:"none", borderRadius:6, color:"#fff", fontFamily:"inherit", fontSize:11, fontWeight:700, cursor:"pointer", letterSpacing:1 }}>
+                {walletLoading ? "CONNECTING..." : "🔗 CONNECT PHANTOM WALLET"}
+              </button>
+            )}
+          </div>
+          <input value={playerName} onChange={e => setPlayerName(e.target.value)} placeholder="Your name / username" style={S.input} maxLength={16}/>
+          <div style={{ marginTop:12 }}>
+            <div style={{ fontSize:9, color:"#444", letterSpacing:2, marginBottom:6 }}>WAGER — FREEDOM TOKENS</div>
+            <div style={{ display:"flex", gap:6 }}>
+              {WAGERS.map(w => <button key={w} onClick={() => setWager(w)} style={{ flex:1, padding:"8px 0", borderRadius:6, fontFamily:"inherit", fontSize:13, fontWeight:700, cursor:"pointer", background:wager===w?"#8b5cf6":"#0e0e0e", color:wager===w?"#fff":"#8b5cf6", border:`1px solid ${wager===w?"#8b5cf6":"#2a2a2a"}` }}>{w}</button>)}
             </div>
-          ):(
-            <button onClick={connectW} disabled={wLoad} style={{...S.btn,background:"linear-gradient(90deg,#8b5cf6,#7c3aed)",color:"#fff",boxShadow:"0 0 14px #8b5cf644"}}>
-              {wLoad?"CONNECTING...":"🔗 CONNECT PHANTOM WALLET"}
+          </div>
+          <div style={{ marginTop:14, display:"flex", gap:0, borderRadius:7, overflow:"hidden", border:"1px solid #1a1a1a" }}>
+            {[["create","🎮 CREATE ROOM"],["join","🚪 JOIN ROOM"]].map(([m, label]) => (
+              <button key={m} onClick={() => setLobbyMode(m)} style={{ flex:1, padding:"9px 0", fontFamily:"inherit", fontSize:10, fontWeight:700, cursor:"pointer", background:lobbyMode===m?"#8b5cf6":"#0a0a0a", color:lobbyMode===m?"#fff":"#555", border:"none", letterSpacing:1 }}>{label}</button>
+            ))}
+          </div>
+          {lobbyMode === "create" && (
+            <button onClick={createGame} disabled={!playerName.trim()||!uid||!walletAddr} style={{ ...S.btn, marginTop:10, background:playerName.trim()&&walletAddr?"linear-gradient(90deg,#8b5cf6,#7c3aed)":"#1a1a1a", color:playerName.trim()&&walletAddr?"#fff":"#444" }}>
+              🎮 CREATE ROOM & FIND OPPONENT
             </button>
           )}
-        </div>
-        <input value={name} onChange={e=>setName(e.target.value.toUpperCase())} placeholder="YOUR NAME" style={S.input} maxLength={16}/>
-        <div style={{marginTop:12}}>
-          <div style={{fontSize:8,color:"#444",letterSpacing:2,marginBottom:6}}>WAGER — FREEDOM TOKENS</div>
-          <div style={{display:"flex",gap:6}}>
-            {WAGERS.map(w=><button key={w} onClick={()=>setWager(w)} style={{flex:1,padding:"9px 0",borderRadius:6,fontFamily:"inherit",fontSize:14,fontWeight:700,cursor:"pointer",background:wager===w?"#8b5cf6":"#0e0e0e",color:wager===w?"#fff":"#8b5cf6",border:`2px solid ${wager===w?"#8b5cf6":"#222"}`,boxShadow:wager===w?"0 0 14px #8b5cf633":"none"}}>{w}</button>)}
+          {lobbyMode === "join" && (
+            <div style={{ marginTop:10 }}>
+              <div style={{ fontSize:9, color:"#444", letterSpacing:2, marginBottom:6 }}>ENTER ROOM ID</div>
+              <input value={joinId} onChange={e => setJoinId(e.target.value.toUpperCase())} maxLength={6} placeholder="ABC123"
+                style={{ ...S.input, textAlign:"center", letterSpacing:8, fontFamily:"'Black Ops One',cursive", fontSize:20, color:"#22c55e" }}/>
+              <button onClick={joinGame} disabled={!playerName.trim()||!uid||!walletAddr||joinId.length<6} style={{ ...S.btn, marginTop:8, background:joinId.length===6&&playerName.trim()&&walletAddr?"linear-gradient(90deg,#22c55e,#16a34a)":"#1a1a1a", color:joinId.length===6&&playerName.trim()&&walletAddr?"#000":"#444" }}>
+                🚪 JOIN ROOM
+              </button>
+            </div>
+          )}
+          <div style={{ marginTop:14, padding:12, background:"#060606", borderRadius:8, border:"1px solid #111" }}>
+            <div style={{ color:"#8b5cf6", fontSize:9, fontWeight:700, letterSpacing:2, marginBottom:8 }}>GAME RULES</div>
+            {[["30s/turn","Each player has 30 seconds per turn"],["Click field","Click a field — its clue appears. Turn ends after 5 seconds."],["Guess themes","Type the column theme below each column anytime"],["Final","When all fields open — guess the final answer"],["Idle","60s without activity = automatic loss"],["Points","Column theme +20 · Final answer +30"]].map(([t,d],i)=>(
+              <div key={i} style={{ display:"flex", gap:8, marginBottom:4 }}>
+                <span style={{ fontSize:8, color:"#8b5cf6", fontWeight:700, whiteSpace:"nowrap", minWidth:60 }}>{t}</span>
+                <span style={{ fontSize:9, color:"#444", lineHeight:1.4 }}>{d}</span>
+              </div>
+            ))}
           </div>
         </div>
-        <div style={{marginTop:12,display:"flex",borderRadius:7,overflow:"hidden",border:"1px solid #1a1a1a"}}>
-          {[["create","🎮 CREATE ROOM"],["join","🚪 JOIN ROOM"]].map(([m,l])=>(
-            <button key={m} onClick={()=>setMode(m)} style={{flex:1,padding:"10px 0",fontFamily:"inherit",fontSize:11,fontWeight:700,cursor:"pointer",background:mode===m?"#8b5cf6":"#0a0a0a",color:mode===m?"#fff":"#555",border:"none",letterSpacing:1}}>{l}</button>
-          ))}
+      </div>
+    <Footer/></div>
+  );
+
+  if (screen === "loading") return <LoadingScreen msg={loadingMsg}/>;
+
+  if (screen === "waiting") return (
+    <div style={S.root}><style>{CSS}</style><Header/>
+      <div style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:16, padding:20 }}>
+        <div style={{ width:56, height:56, border:"3px solid #22c55e22", borderTop:"3px solid #22c55e", borderRadius:"50%", animation:"spin 1s linear infinite" }}/>
+        <div style={{ fontFamily:"'Black Ops One',cursive", fontSize:14, color:"#22c55e", letterSpacing:3 }}>WAITING FOR OPPONENT</div>
+        <div style={{ fontSize:11, color:"#444" }}>Wager: <b style={{ color:"#a78bfa" }}>{wager}</b> FREEDOM tokens</div>
+        <div style={{ textAlign:"center" }}>
+          <div style={{ fontSize:10, color:"#555", marginBottom:8 }}>SHARE THIS ROOM ID:</div>
+          <div style={{ fontSize:38, fontFamily:"'Black Ops One',cursive", color:"#22c55e", letterSpacing:8, padding:"14px 28px", background:"#0a1a0f", border:"2px solid #22c55e44", borderRadius:10, textShadow:"0 0 20px #22c55e88" }}>{gameId}</div>
         </div>
-        {mode==="create"&&(
-          <button onClick={create} disabled={!name.trim()||!uid||!wallet} style={{...S.btn,marginTop:10,background:name.trim()&&wallet?"linear-gradient(90deg,#8b5cf6,#7c3aed)":"#1a1a1a",color:name.trim()&&wallet?"#fff":"#444",boxShadow:name.trim()&&wallet?"0 0 18px #8b5cf633":"none"}}>
-            🎮 CREATE ROOM
-          </button>
-        )}
-        {mode==="join"&&(
-          <div style={{marginTop:10}}>
-            <div style={{fontSize:8,color:"#444",letterSpacing:2,marginBottom:6}}>ROOM ID</div>
-            <input value={roomIn} onChange={e=>setRoom(e.target.value.toUpperCase())} maxLength={6} placeholder="ABC123"
-              style={{...S.input,textAlign:"center",letterSpacing:8,fontFamily:"'Black Ops One',cursive",fontSize:22,color:GREEN}}/>
-            <button onClick={join} disabled={!name.trim()||!uid||!wallet||roomIn.length<6} style={{...S.btn,marginTop:8,background:roomIn.length===6&&name.trim()&&wallet?"linear-gradient(90deg,#22c55e,#16a34a)":"#1a1a1a",color:roomIn.length===6&&name.trim()&&wallet?"#000":"#444"}}>
-              🚪 JOIN ROOM
-            </button>
+        <button onClick={() => { set(ref(db,`assoc_games/${gameId}`),null); setScreen("lobby"); setGameId(null); setMyRole(null); setGameStarted(false); }} style={{ ...S.btn, maxWidth:180, padding:"8px 0" }}>CANCEL</button>
+      </div>
+    <Footer/></div>
+  );
+
+  if (screen === "result" || winner) return (
+    <div style={S.root}><style>{CSS}</style><Header/>
+      <div style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
+        <div style={{ ...S.card, textAlign:"center", maxWidth:340 }}>
+          <div style={{ fontSize:56 }}>{winner===myRole?"🏆":"💀"}</div>
+          <div style={{ fontFamily:"'Black Ops One',cursive", fontSize:24, letterSpacing:3, marginTop:8, color:winner===myRole?"#22c55e":"#ef4444" }}>{winner===myRole?"YOU WIN!":"YOU LOSE"}</div>
+          <div style={{ color:"#555", fontSize:11, marginTop:6, marginBottom:20 }}>{winReason}</div>
+          <div style={{ display:"flex", gap:14, justifyContent:"center", marginBottom:20 }}>
+            {["p1","p2"].map(r=>(
+              <div key={r} style={{ padding:"12px 24px", borderRadius:10, background:r===winner?"#22c55e0a":"#0a0a0a", border:`2px solid ${r===winner?"#22c55e":"#1a1a1a"}` }}>
+                <div style={{ fontSize:9, color:"#444" }}>{r===myRole?myName:oppName}</div>
+                <div style={{ fontSize:30, fontWeight:900, color:r===winner?"#22c55e":"#fff" }}>{scores[r]||0}</div>
+                <div style={{ fontSize:9, color:"#333" }}>points</div>
+              </div>
+            ))}
           </div>
-        )}
-        <button onClick={()=>setLB(true)} style={{...S.btn,marginTop:10,background:"#0a0a14",color:"#a78bfa",border:"1px solid #a78bfa33"}}>
-          🏆 LEADERBOARD
-        </button>
-        <div style={{marginTop:12,padding:12,background:"#060606",borderRadius:8,border:"1px solid #111"}}>
-          <div style={{color:GREEN,fontSize:8,fontWeight:700,letterSpacing:2,marginBottom:8}}>HOW TO PLAY</div>
-          {[
-            ["1.","Click one field — the clue appears and STAYS VISIBLE"],
-            ["2.","Type the COLUMN THEME or FINAL ANSWER in the boxes below"],
-            ["3.","Correct column = all fields turn your color (+20 pts)"],
-            ["4.","Correct final answer = instant win (+30 pts)"],
-            ["5.","30s per turn · 60s idle = auto loss · P1=🔴 P2=🔵"],
-          ].map(([n,t],i)=>(
-            <div key={i} style={{display:"flex",gap:8,marginBottom:4}}>
-              <span style={{fontSize:8,color:GREEN,fontWeight:700,minWidth:14}}>{n}</span>
-              <span style={{fontSize:8,color:"#555",lineHeight:1.5}}>{t}</span>
-            </div>
-          ))}
+          {winner===myRole&&<div style={{ color:"#a78bfa", fontSize:12, marginBottom:14 }}>🎉 Winnings: <b>{wager*2}</b> FREEDOM tokens</div>}
+          <button onClick={resetGame} style={{ ...S.btn, background:"linear-gradient(90deg,#8b5cf6,#7c3aed)", color:"#fff" }}>NEW GAME</button>
         </div>
       </div>
-    </div>
     <Footer/></div>
   );
 
-  if(screen==="loading") return <Loading msg={lMsg}/>;
+  if (!board) return <LoadingScreen msg="Loading game..."/>;
 
-  if(screen==="waiting") return (
-    <div style={S.root}><style>{CSS}</style><Header/>
-    <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16,padding:20}}>
-      <div style={{width:52,height:52,border:`3px solid ${GREEN}22`,borderTop:`3px solid ${GREEN}`,borderRadius:"50%",animation:"spin 1s linear infinite"}}/>
-      <div style={{fontFamily:"'Black Ops One',cursive",fontSize:13,color:GREEN,letterSpacing:3,textAlign:"center"}}>WAITING FOR OPPONENT</div>
-      <div style={{fontSize:11,color:"#444",textAlign:"center"}}>WAGER: <b style={{color:"#a78bfa"}}>{wager}</b> FREEDOM TOKENS</div>
-      <div style={{textAlign:"center"}}>
-        <div style={{fontSize:9,color:"#555",marginBottom:8,letterSpacing:2}}>SHARE THIS ROOM ID:</div>
-        <div style={{fontSize:36,fontFamily:"'Black Ops One',cursive",color:GREEN,letterSpacing:8,padding:"14px 24px",background:"#0a1a0f",border:`2px solid ${GREEN}44`,borderRadius:10,textShadow:`0 0 20px ${GREEN}88`}}>{gameId}</div>
-      </div>
-      <button onClick={()=>{set(ref(db,`ag3/${gameId}`),null);setScr("lobby");setGId(null);setRole(null);}} style={{...S.btn,maxWidth:160,padding:"8px 0",fontSize:10}}>CANCEL</button>
-    </div>
-    <Footer/></div>
-  );
+  const [colA, colB, colC, colD] = board.columns;
 
-  if(screen==="result"||winner) return (
-    <div style={S.root}><style>{CSS}</style><Header/>
-    {showLB&&<Leaderboard onClose={()=>setLB(false)}/>}
-    <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
-      <div style={{...S.card,textAlign:"center",maxWidth:320}}>
-        <div style={{fontSize:52,lineHeight:1}}>{winner===myRole?"🏆":"💀"}</div>
-        <div style={{fontFamily:"'Black Ops One',cursive",fontSize:20,letterSpacing:3,marginTop:8,
-          color:winner===myRole?GREEN:P1CLR,textShadow:`0 0 20px ${winner===myRole?GREEN:P1CLR}88`}}>
-          {winner===myRole?"YOU WIN!":"YOU LOSE"}
-        </div>
-        <div style={{color:"#555",fontSize:10,marginTop:6,marginBottom:18}}>{winReason}</div>
-        <div style={{display:"flex",gap:12,justifyContent:"center",marginBottom:18}}>
-          {["p1","p2"].map(r=>(
-            <div key={r} style={{padding:"10px 20px",borderRadius:10,background:r===winner?`${GREEN}0a`:"#0a0a0a",border:`2px solid ${r===winner?GREEN:"#1a1a1a"}`}}>
-              <div style={{fontSize:8,color:"#444"}}>{r===myRole?myName:oppName}</div>
-              <div style={{fontSize:28,fontWeight:900,color:r===winner?GREEN:"#fff"}}>{scores[r]||0}</div>
-              <div style={{fontSize:8,color:"#333"}}>PTS</div>
-            </div>
-          ))}
-        </div>
-        {winner===myRole&&<div style={{color:"#a78bfa",fontSize:11,marginBottom:12,padding:"7px",background:"#a78bfa0a",borderRadius:6,border:"1px solid #a78bfa33"}}>🎉 WINNINGS: <b>{wager*2}</b> FREEDOM TOKENS</div>}
-        <div style={{display:"flex",gap:8}}>
-          <button onClick={reset} style={{...S.btn,flex:1,background:"linear-gradient(90deg,#8b5cf6,#7c3aed)",color:"#fff"}}>NEW GAME</button>
-          <button onClick={()=>setLB(true)} style={{...S.btn,flex:1,background:"#0a0a14",color:"#a78bfa",border:"1px solid #a78bfa33"}}>🏆 LB</button>
-        </div>
-      </div>
-    </div>
-    <Footer/></div>
-  );
+  /* ══════════════════════════════════════════════════════
+     GAME BOARD — True X layout:
 
-  if(!board) return <Loading msg="LOADING GAME..."/>;
-  const [cA,cB,cC,cD]=board.columns;
+     [col A header]  [FINAL ???]  [col D header]
+     [A1][A2][A3][A4]  [  ???  ]  [D4][D3][D2][D1]
+     [B1][B2][B3][B4]  [       ]  [C4][C3][C2][C1]
+     [col B header]  [         ]  [col C header]
 
-  /* ════════════════════════════════════════
-     BOARD LAYOUT — X shape like RTS:
+     Guess row:
+     [Theme A input] [Final input] [Theme D input]
+     [Theme B input] [           ] [Theme C input]
+  ══════════════════════════════════════════════════════ */
 
-     [  A  ]         [  D  ]
-     A1 A2 A3 A4 [???] D1 D2 D3 D4
-     B1 B2 B3 B4 [   ] C1 C2 C3 C4  (C reversed so C4 near center)
-     [  B  ]         [  C  ]
-
-     Fields: height=56px, width fills 4-column grid → ~3:1 ratio on desktop
-     On mobile: overflow-x scroll so fields stay readable
-  ════════════════════════════════════════ */
-
-  // 4 fields in a horizontal row
-  const Row4 = ({col, reversed=false}) => {
-    const fields = reversed ? [...col.fields].reverse() : col.fields;
-    return (
-      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:4,flex:1,minWidth:180}}>
-        {fields.map(f=>(
-          <Field key={f.id} field={f}
-            isOpen={!!opened[f.id]}
-            isSolved={!!solved[f.id]}
-            solvedBy={solved[f.id]||null}
-            canClick={canClick&&!solved[f.id]&&!opened[f.id]}
-            onReveal={reveal}
-          />
-        ))}
-      </div>
-    );
-  };
-
-  const ColLabel = ({col,pos="top"}) => (
-    <div style={{textAlign:"center",padding:"2px 0",
-      [pos==="top"?"borderBottom":"borderTop"]:`3px solid ${GREEN}`,
-      [pos==="top"?"marginBottom":"marginTop"]:"4px"}}>
-      <span style={{fontFamily:"'Black Ops One',cursive",fontSize:16,color:GREEN,letterSpacing:3,textShadow:`0 0 8px ${GREEN}66`}}>{col.id}</span>
-    </div>
-  );
-
-  const FinalBox = () => (
-    <div style={{width:70,flexShrink:0,display:"flex"}}>
-      <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
-        background:finalPhase?"#081408":"#050508",
-        border:`2px solid ${finalPhase?GREEN:"#1a1a1a"}`,
-        borderRadius:8,padding:6,textAlign:"center",
-        animation:finalPhase?"glowPulse 2s infinite":"none",
-        boxSizing:"border-box"}}>
-        <div style={{fontSize:7,color:"#444",letterSpacing:1,marginBottom:3}}>FINAL</div>
-        {finalSolved
-          ?<div style={{fontSize:10,fontWeight:900,color:finalSolved==="p1"?P1CLR:P2CLR,letterSpacing:1}}>{board.final.answer}</div>
-          :<div style={{fontFamily:"'Black Ops One',cursive",fontSize:16,color:"#1a2a1a"}}>???</div>
-        }
-        <div style={{fontSize:6,color:"#2a2a2a",marginTop:3,lineHeight:1.3}}>{board.final.hint}</div>
-      </div>
-    </div>
-  );
+  const CELL = 70; // px per cell
+  const GAP = 6;
+  const FINAL_W = 90;
 
   return (
     <div style={S.root}><style>{CSS}</style><Header/>
-    {showLB&&<Leaderboard onClose={()=>setLB(false)}/>}
 
-    {/* STATUS BAR */}
-    <div style={S.bar}>
-      <div style={{display:"flex",gap:4,alignItems:"center",flex:1,minWidth:0}}>
-        {["p1","p2"].map(r=>{
-          const pc=r==="p1"?P1CLR:P2CLR;
-          return (
-            <div key={r} style={{padding:"3px 8px",borderRadius:12,
-              background:gs?.currentTurn===r?`${pc}22`:"#0a0a0a",
-              border:`2px solid ${gs?.currentTurn===r?pc:"#1a1a1a"}`,
-              fontSize:10,color:r===myRole?pc:"#555",
-              fontWeight:gs?.currentTurn===r?700:400,whiteSpace:"nowrap"}}>
-              {r===myRole?myName:oppName} <b style={{color:gs?.currentTurn===r?"#fff":"inherit"}}>{scores[r]||0}</b>
+      {/* STATUS */}
+      <div style={S.statusBar}>
+        <div style={{ display:"flex", gap:6, alignItems:"center", flex:1 }}>
+          {["p1","p2"].map(r=>(
+            <div key={r} style={{ padding:"3px 12px", borderRadius:14, background:gameState?.currentTurn===r?"#8b5cf618":"#0a0a0a", border:`1px solid ${gameState?.currentTurn===r?"#8b5cf6":"#1a1a1a"}`, fontSize:11, color:r===myRole?"#a78bfa":"#555", fontWeight:gameState?.currentTurn===r?700:400 }}>
+              {r===myRole?myName:oppName} <b style={{ color:gameState?.currentTurn===r?"#fff":"inherit" }}>{scores[r]||0}</b>
             </div>
-          );
-        })}
-      </div>
-      <TimerBar secs={finalPhase?tFinal:tTurn} max={finalPhase?T_FINAL:T_TURN} warn={finalPhase?15:8}/>
-      <div style={{fontSize:9,fontWeight:700,letterSpacing:1,whiteSpace:"nowrap",
-        color:finalPhase?"#f59e0b":isMy?GREEN:"#ef4444"}}>
-        {finalPhase?"🎯FINAL":isMy?"⚡YOURS":"⏳WAIT"}
-      </div>
-      {tIdle<20&&started&&<div style={{fontSize:8,color:"#ef4444",animation:"blink 1s infinite"}}>IDLE {tIdle}s</div>}
-      <button onClick={()=>setLB(true)} style={{padding:"2px 7px",borderRadius:4,background:"#0a0a14",color:"#a78bfa",border:"1px solid #a78bfa33",fontFamily:"inherit",fontSize:8,cursor:"pointer"}}>🏆</button>
-      {isMy&&!finalPhase&&!winner&&started&&(
-        <button onClick={()=>{touch();pass();L("TURN PASSED.");}} style={{padding:"2px 7px",borderRadius:4,background:"#111",color:"#444",border:"1px solid #1a1a1a",fontFamily:"inherit",fontSize:8,cursor:"pointer"}}>PASS</button>
-      )}
-    </div>
-
-    {/* HINT */}
-    <div style={{fontSize:8,textAlign:"center",padding:"3px 0",borderBottom:"1px solid #0a0a0a",background:"#050505",
-      color:canClick?GREEN:canGuess?"#a78bfa":"#1a1a1a",letterSpacing:1,fontWeight:700}}>
-      {!started?"⏳ WAITING FOR OPPONENT...":
-       finalPhase?"🎯 GUESS COLUMN THEME OR FINAL ANSWER BELOW!":
-       isMy?canClick?"👆 TAP A FIELD TO REVEAL ITS CLUE":
-            gs?.turnOpened?"✏️ GUESS THE THEME OR FINAL ANSWER BELOW":"WAIT FOR NEXT TURN...":
-       "⏳ WAITING FOR OPPONENT..."}
-    </div>
-
-    {/* BOARD — horizontal scroll on mobile */}
-    <div style={{flex:1,overflowY:"auto",padding:"6px 4px"}}>
-      <div style={{minWidth:320,maxWidth:840,margin:"0 auto",padding:"0 2px"}}>
-
-        {/* TOP LABELS */}
-        <div style={{display:"flex",gap:6,alignItems:"flex-end",marginBottom:2}}>
-          <div style={{flex:1}}><ColLabel col={cA} pos="top"/></div>
-          <div style={{width:70}}/>
-          <div style={{flex:1}}><ColLabel col={cD} pos="top"/></div>
+          ))}
         </div>
-
-        {/* ROW 1: A + FINAL(spans 2) + D */}
-        <div style={{display:"flex",gap:6,marginBottom:4,alignItems:"stretch"}}>
-          <Row4 col={cA}/>
-          <FinalBox/>
-          <Row4 col={cD}/>
+        <div style={{ width:120 }}>
+          {finalPhase?<TimerBar secs={finalTimer} max={FINAL_TIME} warn={15}/>:<TimerBar secs={turnTimer} max={TURN_TIME} warn={8}/>}
         </div>
-
-        {/* ROW 2: B + spacer + C */}
-        <div style={{display:"flex",gap:6,marginBottom:2,alignItems:"stretch"}}>
-          <Row4 col={cB}/>
-          <div style={{width:70,flexShrink:0}}/>
-          <Row4 col={cC}/>
+        <div style={{ fontSize:10, fontWeight:700, color:finalPhase?"#f59e0b":isMy?"#22c55e":"#ef4444", whiteSpace:"nowrap" }}>
+          {finalPhase?"🎯 FINAL":isMy?"⚡ YOUR TURN":"⏳ WAIT"}
         </div>
-
-        {/* BOTTOM LABELS */}
-        <div style={{display:"flex",gap:6,alignItems:"flex-start",marginBottom:8}}>
-          <div style={{flex:1}}><ColLabel col={cB} pos="bottom"/></div>
-          <div style={{width:70}}/>
-          <div style={{flex:1}}><ColLabel col={cC} pos="bottom"/></div>
-        </div>
-
-        {/* GUESS BOXES */}
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 70px 1fr 1fr",gap:4,marginBottom:6}}>
-          <GuessBox label="THEME A" solved={!!colSolved.A} solvedText={cA.theme} solvedBy={colSolved.A} disabled={!canGuess} onGuess={v=>guessCol("A",v)} color={GREEN}/>
-          <GuessBox label="THEME B" solved={!!colSolved.B} solvedText={cB.theme} solvedBy={colSolved.B} disabled={!canGuess} onGuess={v=>guessCol("B",v)} color={GREEN}/>
-          <GuessBox label="FINAL"   solved={!!finalSolved}  solvedText={board.final.answer} solvedBy={finalSolved}  disabled={!canGuess} onGuess={guessFinal} color="#a78bfa"/>
-          <GuessBox label="THEME C" solved={!!colSolved.C} solvedText={cC.theme} solvedBy={colSolved.C} disabled={!canGuess} onGuess={v=>guessCol("C",v)} color={GREEN}/>
-          <GuessBox label="THEME D" solved={!!colSolved.D} solvedText={cD.theme} solvedBy={colSolved.D} disabled={!canGuess} onGuess={v=>guessCol("D",v)} color={GREEN}/>
-        </div>
-
-        {/* LOG */}
-        {log.length>0&&(
-          <div style={{padding:"5px 10px",background:"#060606",borderRadius:6,border:"1px solid #0e0e0e"}}>
-            {log.map((l,i)=><div key={i} style={{fontSize:9,color:i===0?"#aaa":"#2a2a2a",padding:"1px 0",letterSpacing:.5}}>{l}</div>)}
-          </div>
+        {idleTimer<20&&gameStarted&&<div style={{ fontSize:9, color:"#ef4444", animation:"blink 1s infinite" }}>IDLE {idleTimer}s</div>}
+        {isMy&&!finalPhase&&!winner&&gameStarted&&(
+          <button onClick={()=>{touch();passTurn();addLog("Turn passed.");}} style={{ padding:"3px 10px", borderRadius:5, background:"#111", color:"#444", border:"1px solid #1a1a1a", fontFamily:"inherit", fontSize:9, cursor:"pointer" }}>PASS</button>
         )}
       </div>
+
+      {/* HINT */}
+      <div style={{ fontSize:10, textAlign:"center", padding:"4px 0", background:"#050505", borderBottom:"1px solid #0a0a0a", color:isMy&&canClick?"#8b5cf6":"#2a2a2a" }}>
+        {!gameStarted?"⏳ Waiting for opponent...":
+          finalPhase?"🎯 Guess column themes or final answer below!":
+          isMy?canClick?"👆 Click a field to reveal its clue (turn ends after 5s)":usedClick?"✅ Field revealed! Guess themes or final below":"Wait for next turn...":
+          "⏳ Opponent's turn..."}
+      </div>
+
+      {/* BOARD */}
+      <div style={{ flex:1, overflowY:"auto", overflowX:"auto", padding:"10px 8px" }}>
+        <div style={{ minWidth:400, maxWidth:760, margin:"0 auto" }}>
+
+          {/* ── ROW 1: Col A header | FINAL label | Col D header ── */}
+          <div style={{ display:"flex", gap:GAP, marginBottom:GAP, alignItems:"center" }}>
+            <div style={{ flex:1, textAlign:"center", paddingBottom:4, borderBottom:`3px solid ${ACC.A}` }}>
+              <span style={{ fontFamily:"'Black Ops One',cursive", fontSize:22, color:ACC.A, letterSpacing:4, textShadow:`0 0 12px ${ACC.A}88` }}>A</span>
+            </div>
+            <div style={{ width:FINAL_W, textAlign:"center" }}>
+              <span style={{ fontSize:9, color:"#333", letterSpacing:2 }}>FINAL</span>
+            </div>
+            <div style={{ flex:1, textAlign:"center", paddingBottom:4, borderBottom:`3px solid ${ACC.D}` }}>
+              <span style={{ fontFamily:"'Black Ops One',cursive", fontSize:22, color:ACC.D, letterSpacing:4, textShadow:`0 0 12px ${ACC.D}88` }}>D</span>
+            </div>
+          </div>
+
+          {/* ── ROW 2: A fields | FINAL box top | D fields reversed ── */}
+          <div style={{ display:"flex", gap:GAP, marginBottom:GAP }}>
+            {/* Col A: A1 A2 A3 A4 */}
+            <div style={{ flex:1, display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:GAP }}>
+              {colA.fields.map(f=>(
+                <FieldCell key={f.id} field={f} state={fieldState(f.id)} canClick={canClick} myTurn={isMy} accent={ACC.A} onReveal={revealField}/>
+              ))}
+            </div>
+            {/* FINAL box — spans rows 2 and 3 */}
+            <div style={{ width:FINAL_W, display:"flex", flexDirection:"column" }}>
+              <div style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", background:finalPhase?"#a78bfa0a":"#050508", border:`2px solid ${finalPhase?"#a78bfa66":"#1a1a2e"}`, borderRadius:10, padding:8, textAlign:"center", animation:finalPhase?"glowPulse 2s infinite":"none", minHeight: CELL*2+GAP }}>
+                <div style={{ fontSize:8, color:"#333", letterSpacing:1, marginBottom:6 }}>FINAL<br/>ANSWER</div>
+                {finalSolved
+                  ?<div style={{ fontSize:12, fontWeight:900, color:"#22c55e", letterSpacing:1 }}>{board.final.answer}</div>
+                  :<div style={{ fontSize:28, color:"#1a1a2e", fontWeight:900, fontFamily:"'Black Ops One',cursive", lineHeight:1 }}>???</div>
+                }
+                <div style={{ fontSize:7, color:"#1a1a2e", marginTop:6 }}>{board.final.hint}</div>
+              </div>
+            </div>
+            {/* Col D reversed: D4 D3 D2 D1 */}
+            <div style={{ flex:1, display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:GAP }}>
+              {[...colD.fields].reverse().map(f=>(
+                <FieldCell key={f.id} field={f} state={fieldState(f.id)} canClick={canClick} myTurn={isMy} accent={ACC.D} onReveal={revealField}/>
+              ))}
+            </div>
+          </div>
+
+          {/* ── ROW 3: B fields | FINAL box bottom (spacer) | C fields reversed ── */}
+          <div style={{ display:"flex", gap:GAP, marginBottom:GAP }}>
+            {/* Col B: B1 B2 B3 B4 */}
+            <div style={{ flex:1, display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:GAP }}>
+              {colB.fields.map(f=>(
+                <FieldCell key={f.id} field={f} state={fieldState(f.id)} canClick={canClick} myTurn={isMy} accent={ACC.B} onReveal={revealField}/>
+              ))}
+            </div>
+            {/* spacer under final */}
+            <div style={{ width:FINAL_W }}/>
+            {/* Col C reversed: C4 C3 C2 C1 */}
+            <div style={{ flex:1, display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:GAP }}>
+              {[...colC.fields].reverse().map(f=>(
+                <FieldCell key={f.id} field={f} state={fieldState(f.id)} canClick={canClick} myTurn={isMy} accent={ACC.C} onReveal={revealField}/>
+              ))}
+            </div>
+          </div>
+
+          {/* ── ROW 4: Col B header | spacer | Col C header ── */}
+          <div style={{ display:"flex", gap:GAP, marginBottom:GAP*2 }}>
+            <div style={{ flex:1, textAlign:"center", paddingTop:4, borderTop:`3px solid ${ACC.B}` }}>
+              <span style={{ fontFamily:"'Black Ops One',cursive", fontSize:22, color:ACC.B, letterSpacing:4, textShadow:`0 0 12px ${ACC.B}88` }}>B</span>
+            </div>
+            <div style={{ width:FINAL_W }}/>
+            <div style={{ flex:1, textAlign:"center", paddingTop:4, borderTop:`3px solid ${ACC.C}` }}>
+              <span style={{ fontFamily:"'Black Ops One',cursive", fontSize:22, color:ACC.C, letterSpacing:4, textShadow:`0 0 12px ${ACC.C}88` }}>C</span>
+            </div>
+          </div>
+
+          {/* ── GUESS SECTION ── */}
+          <div style={{ background:"#080808", border:"1px solid #1a1a1a", borderRadius:10, padding:12 }}>
+            <div style={{ fontSize:9, color:"#444", letterSpacing:2, marginBottom:8, textAlign:"center" }}>GUESS COLUMN THEMES & FINAL ANSWER</div>
+
+            {/* Row 1: Theme A | Final | Theme D */}
+            <div style={{ display:"flex", gap:GAP, marginBottom:GAP }}>
+              <div style={{ flex:1 }}>
+                <GuessInput label="Theme A" solved={!!colSolved.A} solvedText={colA.theme} disabled={!canGuess} onGuess={v=>guessCol("A",v)} accent={ACC.A} placeholder="column A theme..."/>
+              </div>
+              <div style={{ width:FINAL_W }}>
+                <GuessInput label="Final" solved={!!finalSolved} solvedText={board.final.answer} disabled={!canGuess} onGuess={guessFinal} accent="#a78bfa" placeholder="final answer..."/>
+              </div>
+              <div style={{ flex:1 }}>
+                <GuessInput label="Theme D" solved={!!colSolved.D} solvedText={colD.theme} disabled={!canGuess} onGuess={v=>guessCol("D",v)} accent={ACC.D} placeholder="column D theme..."/>
+              </div>
+            </div>
+
+            {/* Row 2: Theme B | spacer | Theme C */}
+            <div style={{ display:"flex", gap:GAP }}>
+              <div style={{ flex:1 }}>
+                <GuessInput label="Theme B" solved={!!colSolved.B} solvedText={colB.theme} disabled={!canGuess} onGuess={v=>guessCol("B",v)} accent={ACC.B} placeholder="column B theme..."/>
+              </div>
+              <div style={{ width:FINAL_W }}/>
+              <div style={{ flex:1 }}>
+                <GuessInput label="Theme C" solved={!!colSolved.C} solvedText={colC.theme} disabled={!canGuess} onGuess={v=>guessCol("C",v)} accent={ACC.C} placeholder="column C theme..."/>
+              </div>
+            </div>
+          </div>
+
+          {/* LOG */}
+          {log.length>0&&(
+            <div style={{ marginTop:8, padding:"5px 10px", background:"#060606", borderRadius:6, border:"1px solid #0e0e0e" }}>
+              {log.map((l,i)=><div key={i} style={{ fontSize:9, color:i===0?"#aaa":"#2a2a2a", padding:"2px 0" }}>{l}</div>)}
+            </div>
+          )}
+        </div>
+      </div>
+      <Footer/>
     </div>
-    <Footer/></div>
   );
 }
 
 const S = {
-  root:{height:"100vh",display:"flex",flexDirection:"column",background:"#030305",fontFamily:"'Rajdhani','Oswald',sans-serif",color:"#fff",overflow:"hidden"},
-  card:{width:"100%",maxWidth:480,background:"#080810",border:"1px solid #12121e",borderRadius:12,padding:"16px 14px",boxSizing:"border-box"},
-  input:{width:"100%",background:"#0a0a14",border:"1px solid #1a1a2e",borderRadius:7,padding:"9px 12px",color:"#fff",fontSize:13,outline:"none",fontFamily:"inherit",boxSizing:"border-box",letterSpacing:1},
-  btn:{width:"100%",padding:"10px 0",background:"#0a0a0a",color:"#555",border:"1px solid #1a1a1a",borderRadius:7,fontFamily:"inherit",fontSize:11,fontWeight:700,cursor:"pointer",letterSpacing:2,transition:"all .2s"},
-  bar:{display:"flex",alignItems:"center",gap:5,flexWrap:"wrap",padding:"5px 8px",background:"#070710",borderBottom:"1px solid #0e0e0e",flexShrink:0},
+  root: { height:"100vh", display:"flex", flexDirection:"column", background:"#030305", fontFamily:"'Rajdhani','Oswald',sans-serif", color:"#fff", overflow:"hidden" },
+  card: { width:"100%", maxWidth:500, background:"#080810", border:"1px solid #12121e", borderRadius:12, padding:"18px 14px", boxSizing:"border-box" },
+  input: { width:"100%", background:"#0a0a14", border:"1px solid #1a1a2e", borderRadius:7, padding:"9px 12px", color:"#fff", fontSize:13, outline:"none", fontFamily:"inherit", boxSizing:"border-box" },
+  btn: { width:"100%", padding:"11px 0", background:"#0a0a0a", color:"#555", border:"1px solid #1a1a1a", borderRadius:7, fontFamily:"inherit", fontSize:11, fontWeight:700, cursor:"pointer", letterSpacing:2, transition:"all .2s" },
+  statusBar: { display:"flex", alignItems:"center", gap:6, flexWrap:"wrap", padding:"5px 10px", background:"#070710", borderBottom:"1px solid #0e0e0e", flexShrink:0 },
 };
 
 const CSS = `
   @import url('https://fonts.googleapis.com/css2?family=Black+Ops+One&family=Rajdhani:wght@400;600;700&display=swap');
-  @keyframes pop   {from{opacity:0;transform:scale(.85)}to{opacity:1;transform:scale(1)}}
-  @keyframes shake {0%,100%{transform:translateX(0)}25%{transform:translateX(-5px)}75%{transform:translateX(5px)}}
-  @keyframes glowPulse {0%,100%{box-shadow:0 0 12px #22c55e22}50%{box-shadow:0 0 28px #22c55e88}}
-  @keyframes blink {0%,100%{opacity:1}50%{opacity:.1}}
-  @keyframes spin  {to{transform:rotate(360deg)}}
-  *{box-sizing:border-box}
-  ::-webkit-scrollbar{width:3px}::-webkit-scrollbar-track{background:#060606}::-webkit-scrollbar-thumb{background:#1a1a1a;border-radius:2px}
+  @keyframes pop { from{opacity:0;transform:scale(.8)} to{opacity:1;transform:scale(1)} }
+  @keyframes shake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-6px)} 75%{transform:translateX(6px)} }
+  @keyframes glowPulse { 0%,100%{box-shadow:0 0 20px #a78bfa22} 50%{box-shadow:0 0 40px #a78bfa55} }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.1} }
+  @keyframes spin { to{transform:rotate(360deg)} }
+  * { box-sizing: border-box; }
+  ::-webkit-scrollbar { width:3px }
+  ::-webkit-scrollbar-track { background:#060606 }
+  ::-webkit-scrollbar-thumb { background:#1a1a1a; border-radius:2px }
 `;
