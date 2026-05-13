@@ -30,90 +30,73 @@ const TURN_SEC = 30;
 const IDLE_SEC = 60;
 const P1C = "#e53935";
 const P2C = "#1e88e5";
-const FH = "#3d4f6b";   // field hidden
-const FC = "#4a6080";   // field clickable
-const FL = "#b7791f";   // field clue (amber)
 
 /* ══════════════════════════════════════════════
-   8 DIFFERENT BOARDS — random each game
+   8 UNIQUE BOARDS
 ══════════════════════════════════════════════ */
 const BOARDS = [
-  {
-    columns:[
-      {id:"A",theme:"ANIMALS",fields:[{id:"A1",clue:"King of jungle",answer:"LION"},{id:"A2",clue:"Black & white stripes",answer:"ZEBRA"},{id:"A3",clue:"Longest neck",answer:"GIRAFFE"},{id:"A4",clue:"Trunk & tusks",answer:"ELEPHANT"}]},
-      {id:"B",theme:"INSTRUMENTS",fields:[{id:"B1",clue:"6 strings",answer:"GUITAR"},{id:"B2",clue:"88 keys",answer:"PIANO"},{id:"B3",clue:"You hit it",answer:"DRUM"},{id:"B4",clue:"Brass & wind",answer:"TRUMPET"}]},
-      {id:"C",theme:"SPORTS",fields:[{id:"C1",clue:"Court & net",answer:"TENNIS"},{id:"C2",clue:"Ice & puck",answer:"HOCKEY"},{id:"C3",clue:"Pool & cap",answer:"SWIMMING"},{id:"C4",clue:"The octagon",answer:"MMA"}]},
-      {id:"D",theme:"FOOD",fields:[{id:"D1",clue:"Italian pie",answer:"PIZZA"},{id:"D2",clue:"Japanese roll",answer:"SUSHI"},{id:"D3",clue:"Mexican wrap",answer:"BURRITO"},{id:"D4",clue:"French bread",answer:"BAGUETTE"}]},
-    ],
-    final:{answer:"HOBBY",hint:"What people do for fun"}
-  },
-  {
-    columns:[
-      {id:"A",theme:"PLANETS",fields:[{id:"A1",clue:"Red planet",answer:"MARS"},{id:"A2",clue:"Ringed giant",answer:"SATURN"},{id:"A3",clue:"Morning star",answer:"VENUS"},{id:"A4",clue:"Blue giant",answer:"NEPTUNE"}]},
-      {id:"B",theme:"CAPITALS",fields:[{id:"B1",clue:"Eiffel Tower city",answer:"PARIS"},{id:"B2",clue:"Rising sun",answer:"TOKYO"},{id:"B3",clue:"Thames River",answer:"LONDON"},{id:"B4",clue:"Vatican neighbor",answer:"ROME"}]},
-      {id:"C",theme:"SUPERHEROES",fields:[{id:"C1",clue:"Web slinger",answer:"SPIDERMAN"},{id:"C2",clue:"Dark knight",answer:"BATMAN"},{id:"C3",clue:"Iron suit",answer:"IRONMAN"},{id:"C4",clue:"Super serum",answer:"CAPTAIN"}]},
-      {id:"D",theme:"OCEANS",fields:[{id:"D1",clue:"Biggest ocean",answer:"PACIFIC"},{id:"D2",clue:"Titanic sank here",answer:"ATLANTIC"},{id:"D3",clue:"Between Africa & Asia",answer:"INDIAN"},{id:"D4",clue:"North polar sea",answer:"ARCTIC"}]},
-    ],
-    final:{answer:"WORLD",hint:"The big picture"}
-  },
-  {
-    columns:[
-      {id:"A",theme:"CARS",fields:[{id:"A1",clue:"Italian sports",answer:"FERRARI"},{id:"A2",clue:"German luxury",answer:"BMW"},{id:"A3",clue:"Electric pioneer",answer:"TESLA"},{id:"A4",clue:"Japanese reliable",answer:"TOYOTA"}]},
-      {id:"B",theme:"FRUITS",fields:[{id:"B1",clue:"Red & round",answer:"APPLE"},{id:"B2",clue:"Yellow & long",answer:"BANANA"},{id:"B3",clue:"Tropical with crown",answer:"PINEAPPLE"},{id:"B4",clue:"Small & red",answer:"STRAWBERRY"}]},
-      {id:"C",theme:"MOUNTAINS",fields:[{id:"C1",clue:"World highest",answer:"EVEREST"},{id:"C2",clue:"Swiss Alps peak",answer:"MATTERHORN"},{id:"C3",clue:"Africa highest",answer:"KILIMANJARO"},{id:"C4",clue:"Japan peak",answer:"FUJI"}]},
-      {id:"D",theme:"DANCES",fields:[{id:"D1",clue:"Argentine passion",answer:"TANGO"},{id:"D2",clue:"Cuban rhythm",answer:"SALSA"},{id:"D3",clue:"Spanish flamenco",answer:"FLAMENCO"},{id:"D4",clue:"Hawaiian hip",answer:"HULA"}]},
-    ],
-    final:{answer:"CULTURE",hint:"Expressions of civilization"}
-  },
-  {
-    columns:[
-      {id:"A",theme:"COLORS",fields:[{id:"A1",clue:"Sky color",answer:"BLUE"},{id:"A2",clue:"Grass color",answer:"GREEN"},{id:"A3",clue:"Fire color",answer:"RED"},{id:"A4",clue:"Night color",answer:"BLACK"}]},
-      {id:"B",theme:"COUNTRIES",fields:[{id:"B1",clue:"Eiffel Tower",answer:"FRANCE"},{id:"B2",clue:"Great Wall",answer:"CHINA"},{id:"B3",clue:"Machu Picchu",answer:"PERU"},{id:"B4",clue:"Pyramids & Sphinx",answer:"EGYPT"}]},
-      {id:"C",theme:"ELEMENTS",fields:[{id:"C1",clue:"Periodic table 1",answer:"HYDROGEN"},{id:"C2",clue:"Bling bling metal",answer:"GOLD"},{id:"C3",clue:"We breathe it",answer:"OXYGEN"},{id:"C4",clue:"Diamond & pencil",answer:"CARBON"}]},
-      {id:"D",theme:"GAMES",fields:[{id:"D1",clue:"32 pieces board",answer:"CHESS"},{id:"D2",clue:"Roll & move",answer:"MONOPOLY"},{id:"D3",clue:"Falling blocks",answer:"TETRIS"},{id:"D4",clue:"52 cards",answer:"POKER"}]},
-    ],
-    final:{answer:"CLASSIC",hint:"Stands the test of time"}
-  },
-  {
-    columns:[
-      {id:"A",theme:"BIRDS",fields:[{id:"A1",clue:"Eagle cousin",answer:"HAWK"},{id:"A2",clue:"Wise night bird",answer:"OWL"},{id:"A3",clue:"Tropical colors",answer:"PARROT"},{id:"A4",clue:"Fast runner",answer:"OSTRICH"}]},
-      {id:"B",theme:"RIVERS",fields:[{id:"B1",clue:"Longest in world",answer:"NILE"},{id:"B2",clue:"Amazon jungle",answer:"AMAZON"},{id:"B3",clue:"Through Paris",answer:"SEINE"},{id:"B4",clue:"China's sorrow",answer:"YANGTZE"}]},
-      {id:"C",theme:"MOVIES",fields:[{id:"C1",clue:"Simba & Mufasa",answer:"LIONKING"},{id:"C2",clue:"Epic space saga",answer:"STARWARS"},{id:"C3",clue:"Ring quest saga",answer:"LOTR"},{id:"C4",clue:"Blue alien world",answer:"AVATAR"}]},
-      {id:"D",theme:"LANGUAGES",fields:[{id:"D1",clue:"Most spoken",answer:"MANDARIN"},{id:"D2",clue:"Shakespeare spoke",answer:"ENGLISH"},{id:"D3",clue:"Cervantes wrote",answer:"SPANISH"},{id:"D4",clue:"Amour language",answer:"FRENCH"}]},
-    ],
-    final:{answer:"JOURNEY",hint:"A trip through life"}
-  },
-  {
-    columns:[
-      {id:"A",theme:"SCIENTISTS",fields:[{id:"A1",clue:"Gravity apple",answer:"NEWTON"},{id:"A2",clue:"Relativity genius",answer:"EINSTEIN"},{id:"A3",clue:"Evolution theory",answer:"DARWIN"},{id:"A4",clue:"Radium discovery",answer:"CURIE"}]},
-      {id:"B",theme:"DESSERTS",fields:[{id:"B1",clue:"Italian ice cream",answer:"GELATO"},{id:"B2",clue:"French pastry",answer:"ECLAIR"},{id:"B3",clue:"American pie",answer:"CHEESECAKE"},{id:"B4",clue:"Chocolate lava",answer:"BROWNIE"}]},
-      {id:"C",theme:"SPORTS TEAMS",fields:[{id:"C1",clue:"NY pinstripes",answer:"YANKEES"},{id:"C2",clue:"Chicago bulls",answer:"BULLS"},{id:"C3",clue:"Manchester red",answer:"UNITED"},{id:"C4",clue:"LA Lakers purple",answer:"LAKERS"}]},
-      {id:"D",theme:"MINERALS",fields:[{id:"D1",clue:"Hardest gem",answer:"DIAMOND"},{id:"D2",clue:"Red gem ring",answer:"RUBY"},{id:"D3",clue:"Blue gem ring",answer:"SAPPHIRE"},{id:"D4",clue:"Green gem",answer:"EMERALD"}]},
-    ],
-    final:{answer:"LEGEND",hint:"Something timeless & famous"}
-  },
-  {
-    columns:[
-      {id:"A",theme:"COMPOSERS",fields:[{id:"A1",clue:"Fifth symphony",answer:"BEETHOVEN"},{id:"A2",clue:"Four seasons",answer:"VIVALDI"},{id:"A3",clue:"Magic flute",answer:"MOZART"},{id:"A4",clue:"Air on G string",answer:"BACH"}]},
-      {id:"B",theme:"TECH COMPANIES",fields:[{id:"B1",clue:"Bitten apple",answer:"APPLE"},{id:"B2",clue:"Search engine giant",answer:"GOOGLE"},{id:"B3",clue:"Social network",answer:"FACEBOOK"},{id:"B4",clue:"Everything store",answer:"AMAZON"}]},
-      {id:"C",theme:"PHILOSOPHERS",fields:[{id:"C1",clue:"I think therefore",answer:"DESCARTES"},{id:"C2",clue:"Cave allegory",answer:"PLATO"},{id:"C3",clue:"Nicomachean ethics",answer:"ARISTOTLE"},{id:"C4",clue:"Thus spoke",answer:"NIETZSCHE"}]},
-      {id:"D",theme:"WEATHER",fields:[{id:"D1",clue:"Twister & funnel",answer:"TORNADO"},{id:"D2",clue:"Lightning & thunder",answer:"STORM"},{id:"D3",clue:"Eye of storm",answer:"HURRICANE"},{id:"D4",clue:"Cold white blanket",answer:"BLIZZARD"}]},
-    ],
-    final:{answer:"POWER",hint:"Force that shapes everything"}
-  },
-  {
-    columns:[
-      {id:"A",theme:"SHARKS",fields:[{id:"A1",clue:"Great & white",answer:"GREATWHITE"},{id:"A2",clue:"Hammer head",answer:"HAMMERHEAD"},{id:"A3",clue:"Bull & reef",answer:"BULL"},{id:"A4",clue:"Whale filter",answer:"WHALE"}]},
-      {id:"B",theme:"COCKTAILS",fields:[{id:"B1",clue:"James Bond martini",answer:"MARTINI"},{id:"B2",clue:"Rum & mint",answer:"MOJITO"},{id:"B3",clue:"Tequila & salt",answer:"MARGARITA"},{id:"B4",clue:"Pina & colada",answer:"PINACOLADA"}]},
-      {id:"C",theme:"ARTISTS",fields:[{id:"C1",clue:"Mona Lisa painter",answer:"DAVINCI"},{id:"C2",clue:"Sunflowers painter",answer:"VANGOGH"},{id:"C3",clue:"Cubism pioneer",answer:"PICASSO"},{id:"C4",clue:"Sistine chapel",answer:"MICHELANGELO"}]},
-      {id:"D",theme:"CURRENCIES",fields:[{id:"D1",clue:"USA money",answer:"DOLLAR"},{id:"D2",clue:"Europe money",answer:"EURO"},{id:"D3",clue:"Japan money",answer:"YEN"},{id:"D4",clue:"UK money",answer:"POUND"}]},
-    ],
-    final:{answer:"TREASURE",hint:"Something valuable & sought"}
-  },
+  { id:0, columns:[
+    {id:"A",theme:"ANIMALS",fields:[{id:"A1",clue:"King of jungle",answer:"LION"},{id:"A2",clue:"Black & white",answer:"ZEBRA"},{id:"A3",clue:"Long neck",answer:"GIRAFFE"},{id:"A4",clue:"Trunk & tusks",answer:"ELEPHANT"}]},
+    {id:"B",theme:"INSTRUMENTS",fields:[{id:"B1",clue:"6 strings",answer:"GUITAR"},{id:"B2",clue:"88 keys",answer:"PIANO"},{id:"B3",clue:"You hit it",answer:"DRUM"},{id:"B4",clue:"Brass & wind",answer:"TRUMPET"}]},
+    {id:"C",theme:"SPORTS",fields:[{id:"C1",clue:"Court & net",answer:"TENNIS"},{id:"C2",clue:"Ice & puck",answer:"HOCKEY"},{id:"C3",clue:"Pool & cap",answer:"SWIMMING"},{id:"C4",clue:"The octagon",answer:"MMA"}]},
+    {id:"D",theme:"FOOD",fields:[{id:"D1",clue:"Italian pie",answer:"PIZZA"},{id:"D2",clue:"Japanese roll",answer:"SUSHI"},{id:"D3",clue:"Mexican wrap",answer:"BURRITO"},{id:"D4",clue:"French bread",answer:"BAGUETTE"}]},
+  ], final:{answer:"HOBBY",hint:"What people do for fun"} },
+
+  { id:1, columns:[
+    {id:"A",theme:"PLANETS",fields:[{id:"A1",clue:"Red planet",answer:"MARS"},{id:"A2",clue:"Ringed giant",answer:"SATURN"},{id:"A3",clue:"Morning star",answer:"VENUS"},{id:"A4",clue:"Blue giant",answer:"NEPTUNE"}]},
+    {id:"B",theme:"CAPITALS",fields:[{id:"B1",clue:"Eiffel Tower",answer:"PARIS"},{id:"B2",clue:"Rising sun",answer:"TOKYO"},{id:"B3",clue:"Thames River",answer:"LONDON"},{id:"B4",clue:"Vatican next door",answer:"ROME"}]},
+    {id:"C",theme:"SUPERHEROES",fields:[{id:"C1",clue:"Web slinger",answer:"SPIDERMAN"},{id:"C2",clue:"Dark knight",answer:"BATMAN"},{id:"C3",clue:"Iron suit",answer:"IRONMAN"},{id:"C4",clue:"Shield & serum",answer:"CAPTAIN"}]},
+    {id:"D",theme:"OCEANS",fields:[{id:"D1",clue:"World's biggest",answer:"PACIFIC"},{id:"D2",clue:"Titanic sank here",answer:"ATLANTIC"},{id:"D3",clue:"Africa & Asia",answer:"INDIAN"},{id:"D4",clue:"North polar sea",answer:"ARCTIC"}]},
+  ], final:{answer:"WORLD",hint:"The big picture"} },
+
+  { id:2, columns:[
+    {id:"A",theme:"CARS",fields:[{id:"A1",clue:"Italian sports",answer:"FERRARI"},{id:"A2",clue:"German luxury",answer:"BMW"},{id:"A3",clue:"Electric pioneer",answer:"TESLA"},{id:"A4",clue:"Japanese reliable",answer:"TOYOTA"}]},
+    {id:"B",theme:"FRUITS",fields:[{id:"B1",clue:"Red & round",answer:"APPLE"},{id:"B2",clue:"Yellow & long",answer:"BANANA"},{id:"B3",clue:"Tropical with crown",answer:"PINEAPPLE"},{id:"B4",clue:"Small & red",answer:"STRAWBERRY"}]},
+    {id:"C",theme:"MOUNTAINS",fields:[{id:"C1",clue:"World's highest",answer:"EVEREST"},{id:"C2",clue:"Swiss Alps peak",answer:"MATTERHORN"},{id:"C3",clue:"Africa's highest",answer:"KILIMANJARO"},{id:"C4",clue:"Japan's peak",answer:"FUJI"}]},
+    {id:"D",theme:"DANCES",fields:[{id:"D1",clue:"Argentine passion",answer:"TANGO"},{id:"D2",clue:"Cuban rhythm",answer:"SALSA"},{id:"D3",clue:"Spanish flamenco",answer:"FLAMENCO"},{id:"D4",clue:"Hawaiian hip",answer:"HULA"}]},
+  ], final:{answer:"CULTURE",hint:"Expressions of civilization"} },
+
+  { id:3, columns:[
+    {id:"A",theme:"COLORS",fields:[{id:"A1",clue:"Sky color",answer:"BLUE"},{id:"A2",clue:"Grass color",answer:"GREEN"},{id:"A3",clue:"Fire color",answer:"RED"},{id:"A4",clue:"Night color",answer:"BLACK"}]},
+    {id:"B",theme:"COUNTRIES",fields:[{id:"B1",clue:"Eiffel Tower",answer:"FRANCE"},{id:"B2",clue:"Great Wall",answer:"CHINA"},{id:"B3",clue:"Machu Picchu",answer:"PERU"},{id:"B4",clue:"Pyramids & Sphinx",answer:"EGYPT"}]},
+    {id:"C",theme:"ELEMENTS",fields:[{id:"C1",clue:"Periodic table 1",answer:"HYDROGEN"},{id:"C2",clue:"Bling bling metal",answer:"GOLD"},{id:"C3",clue:"We breathe it",answer:"OXYGEN"},{id:"C4",clue:"Diamond & pencil",answer:"CARBON"}]},
+    {id:"D",theme:"BOARD GAMES",fields:[{id:"D1",clue:"32 pieces",answer:"CHESS"},{id:"D2",clue:"Roll & buy",answer:"MONOPOLY"},{id:"D3",clue:"Falling blocks",answer:"TETRIS"},{id:"D4",clue:"52 cards",answer:"POKER"}]},
+  ], final:{answer:"CLASSIC",hint:"Stands the test of time"} },
+
+  { id:4, columns:[
+    {id:"A",theme:"BIRDS",fields:[{id:"A1",clue:"Eagle cousin",answer:"HAWK"},{id:"A2",clue:"Wise night bird",answer:"OWL"},{id:"A3",clue:"Tropical colors",answer:"PARROT"},{id:"A4",clue:"Fast runner",answer:"OSTRICH"}]},
+    {id:"B",theme:"RIVERS",fields:[{id:"B1",clue:"Longest in world",answer:"NILE"},{id:"B2",clue:"Amazon jungle",answer:"AMAZON"},{id:"B3",clue:"Through Paris",answer:"SEINE"},{id:"B4",clue:"China's sorrow",answer:"YANGTZE"}]},
+    {id:"C",theme:"MOVIES",fields:[{id:"C1",clue:"Simba & Mufasa",answer:"LIONKING"},{id:"C2",clue:"Epic space saga",answer:"STARWARS"},{id:"C3",clue:"Ring quest saga",answer:"LOTR"},{id:"C4",clue:"Blue alien world",answer:"AVATAR"}]},
+    {id:"D",theme:"LANGUAGES",fields:[{id:"D1",clue:"Most spoken",answer:"MANDARIN"},{id:"D2",clue:"Shakespeare spoke",answer:"ENGLISH"},{id:"D3",clue:"Cervantes wrote",answer:"SPANISH"},{id:"D4",clue:"Amour language",answer:"FRENCH"}]},
+  ], final:{answer:"JOURNEY",hint:"A trip through life"} },
+
+  { id:5, columns:[
+    {id:"A",theme:"SCIENTISTS",fields:[{id:"A1",clue:"Gravity apple",answer:"NEWTON"},{id:"A2",clue:"Relativity genius",answer:"EINSTEIN"},{id:"A3",clue:"Evolution theory",answer:"DARWIN"},{id:"A4",clue:"Radium discovery",answer:"CURIE"}]},
+    {id:"B",theme:"DESSERTS",fields:[{id:"B1",clue:"Italian ice cream",answer:"GELATO"},{id:"B2",clue:"French pastry",answer:"ECLAIR"},{id:"B3",clue:"Chocolate lava",answer:"BROWNIE"},{id:"B4",clue:"Layered cream cake",answer:"TIRAMISU"}]},
+    {id:"C",theme:"SPORTS TEAMS",fields:[{id:"C1",clue:"NY pinstripes",answer:"YANKEES"},{id:"C2",clue:"Chicago bulls",answer:"BULLS"},{id:"C3",clue:"Manchester red",answer:"UNITED"},{id:"C4",clue:"LA purple & gold",answer:"LAKERS"}]},
+    {id:"D",theme:"GEMS",fields:[{id:"D1",clue:"Hardest gem",answer:"DIAMOND"},{id:"D2",clue:"Red ring gem",answer:"RUBY"},{id:"D3",clue:"Blue ring gem",answer:"SAPPHIRE"},{id:"D4",clue:"Green gem",answer:"EMERALD"}]},
+  ], final:{answer:"LEGEND",hint:"Something timeless & famous"} },
+
+  { id:6, columns:[
+    {id:"A",theme:"COMPOSERS",fields:[{id:"A1",clue:"Fifth symphony",answer:"BEETHOVEN"},{id:"A2",clue:"Four seasons",answer:"VIVALDI"},{id:"A3",clue:"Magic flute",answer:"MOZART"},{id:"A4",clue:"G string air",answer:"BACH"}]},
+    {id:"B",theme:"TECH GIANTS",fields:[{id:"B1",clue:"Bitten apple",answer:"APPLE"},{id:"B2",clue:"Search giant",answer:"GOOGLE"},{id:"B3",clue:"Social network",answer:"FACEBOOK"},{id:"B4",clue:"Everything store",answer:"AMAZON"}]},
+    {id:"C",theme:"PHILOSOPHERS",fields:[{id:"C1",clue:"I think therefore",answer:"DESCARTES"},{id:"C2",clue:"Cave allegory",answer:"PLATO"},{id:"C3",clue:"Golden mean",answer:"ARISTOTLE"},{id:"C4",clue:"Thus spoke",answer:"NIETZSCHE"}]},
+    {id:"D",theme:"WEATHER",fields:[{id:"D1",clue:"Twister & funnel",answer:"TORNADO"},{id:"D2",clue:"Lightning & rain",answer:"STORM"},{id:"D3",clue:"Eye of storm",answer:"HURRICANE"},{id:"D4",clue:"Cold white blanket",answer:"BLIZZARD"}]},
+  ], final:{answer:"POWER",hint:"Force that shapes everything"} },
+
+  { id:7, columns:[
+    {id:"A",theme:"COCKTAILS",fields:[{id:"A1",clue:"James Bond's drink",answer:"MARTINI"},{id:"A2",clue:"Rum & mint",answer:"MOJITO"},{id:"A3",clue:"Tequila & lime",answer:"MARGARITA"},{id:"A4",clue:"Pina & colada",answer:"PINACOLADA"}]},
+    {id:"B",theme:"ARTISTS",fields:[{id:"B1",clue:"Mona Lisa painter",answer:"DAVINCI"},{id:"B2",clue:"Sunflowers painter",answer:"VANGOGH"},{id:"B3",clue:"Cubism pioneer",answer:"PICASSO"},{id:"B4",clue:"Sistine chapel",answer:"MICHELANGELO"}]},
+    {id:"C",theme:"CURRENCIES",fields:[{id:"C1",clue:"USA money",answer:"DOLLAR"},{id:"C2",clue:"Europe money",answer:"EURO"},{id:"C3",clue:"Japan money",answer:"YEN"},{id:"C4",clue:"UK money",answer:"POUND"}]},
+    {id:"D",theme:"SHARKS",fields:[{id:"D1",clue:"Great & white",answer:"GREATWHITE"},{id:"D2",clue:"Hammer shaped",answer:"HAMMERHEAD"},{id:"D3",clue:"Bull & reef",answer:"BULL"},{id:"D4",clue:"Filter feeder",answer:"WHALE"}]},
+  ], final:{answer:"TREASURE",hint:"Something valuable & sought"} },
 ];
 
+// Truly random board selection using timestamp + random
 function getRandomBoard() {
-  return BOARDS[Math.floor(Math.random() * BOARDS.length)];
+  const seed = Math.floor(Date.now() * Math.random() * 137) % BOARDS.length;
+  const board = BOARDS[seed];
+  return JSON.parse(JSON.stringify(board)); // deep clone
 }
 
 function nrm(s) { return s.trim().toUpperCase().replace(/[^A-Z0-9]/g,""); }
@@ -134,92 +117,133 @@ async function signWager(amount) {
   } catch(e) { return { ok:false, err:e.message }; }
 }
 
-/* ── FIELD BUTTON ── */
-function FieldBtn({ field, state, solvedBy, canOpen, onOpen, desktop }) {
-  const h = desktop ? 62 : 54;
-  const bg = state==="solved" ? (solvedBy==="p1"?P1C:P2C) : state==="clue" ? FL : canOpen ? FC : FH;
-  const base = { width:"100%", height:h, borderRadius:10, display:"flex", alignItems:"center", justifyContent:"center", flexDirection:"column", gap:2, padding:"0 8px", boxSizing:"border-box", userSelect:"none", border:"none", fontFamily:"inherit", transition:"all .15s", cursor:canOpen&&state==="hidden"?"pointer":"default", background:bg, boxShadow:state==="solved"?"0 3px 0 rgba(0,0,0,.35)":canOpen?"0 2px 0 rgba(0,0,0,.3)":"none" };
+/* ══════════════════════════════════════════════
+   FIELD CELL — 4:1 ratio using paddingBottom trick
+══════════════════════════════════════════════ */
+function Field({ field, state, solvedBy, canOpen, onOpen }) {
+  const bg =
+    state === "solved" ? (solvedBy==="p1" ? P1C : P2C) :
+    state === "clue"   ? "#c47d0e" :
+    canOpen            ? "#5a7595" : "#3d5068";
+
+  const shadow =
+    state === "solved" ? "0 4px 0 rgba(0,0,0,.4)" :
+    canOpen            ? "0 3px 0 rgba(0,0,0,.35)" : "none";
+
+  const outer = {
+    position:"relative", width:"100%", paddingBottom:"25%", // 4:1 ratio
+    borderRadius:8, overflow:"hidden", userSelect:"none",
+    background:bg, boxShadow:shadow,
+    cursor: canOpen && state==="hidden" ? "pointer" : "default",
+    transition:"all .15s",
+  };
+  const inner = {
+    position:"absolute", inset:0,
+    display:"flex", alignItems:"center", justifyContent:"center",
+    flexDirection:"column", gap:2, padding:"4px 6px",
+  };
+
   if (state==="solved") return (
-    <div style={base}>
-      <div style={{fontSize:desktop?14:13,fontWeight:900,color:"#fff",letterSpacing:.5,textAlign:"center"}}>{field.answer}</div>
-      <div style={{fontSize:desktop?10:9,color:"rgba(255,255,255,.75)",textAlign:"center"}}>{field.clue}</div>
+    <div style={outer}>
+      <div style={inner}>
+        <div style={{fontSize:"clamp(10px,1.1vw,14px)",fontWeight:900,color:"#fff",textAlign:"center",letterSpacing:.5}}>{field.answer}</div>
+        <div style={{fontSize:"clamp(8px,.85vw,10px)",color:"rgba(255,255,255,.75)",textAlign:"center"}}>{field.clue}</div>
+      </div>
     </div>
   );
   if (state==="clue") return (
-    <div style={{...base,border:"2px solid rgba(255,255,255,.6)"}}>
-      <div style={{fontSize:8,color:"rgba(255,255,255,.8)"}}>CLUE</div>
-      <div style={{fontSize:desktop?13:12,color:"#fff",textAlign:"center",fontWeight:700}}>{field.clue}</div>
+    <div style={{...outer,border:"2px solid rgba(255,255,255,.7)"}}>
+      <div style={inner}>
+        <div style={{fontSize:"clamp(7px,.7vw,9px)",color:"rgba(255,255,255,.85)",letterSpacing:1,fontWeight:700}}>CLUE</div>
+        <div style={{fontSize:"clamp(9px,1vw,13px)",color:"#fff",textAlign:"center",fontWeight:700,lineHeight:1.2}}>{field.clue}</div>
+      </div>
     </div>
   );
   return (
-    <div onClick={canOpen?()=>onOpen(field.id):undefined} style={base}
-      onMouseEnter={e=>{ if(canOpen) e.currentTarget.style.background="#5a7090"; }}
-      onMouseLeave={e=>{ if(canOpen) e.currentTarget.style.background=FC; }}>
-      <div style={{fontSize:desktop?16:15,fontWeight:900,color:canOpen?"#c8d8e8":"#3a4a5a",letterSpacing:1}}>{field.id}</div>
+    <div onClick={canOpen?()=>onOpen(field.id):undefined} style={outer}
+      onMouseEnter={e=>{ if(canOpen){e.currentTarget.style.background="#6a88a8";e.currentTarget.style.boxShadow="0 4px 0 rgba(0,0,0,.4)";} }}
+      onMouseLeave={e=>{ if(canOpen){e.currentTarget.style.background="#5a7595";e.currentTarget.style.boxShadow="0 3px 0 rgba(0,0,0,.35)";} }}>
+      <div style={inner}>
+        <span style={{fontSize:"clamp(12px,1.2vw,18px)",fontWeight:900,color:canOpen?"#c8d8e8":"#3a4a5a",letterSpacing:1}}>{field.id}</span>
+      </div>
     </div>
   );
 }
 
-/* ── THEME BTN ── */
-function ThemeBtn({ colId, solved, solvedBy, theme, disabled, onGuess, desktop }) {
+/* ── THEME INPUT ── */
+function ThemeInput({ colId, solved, solvedBy, theme, disabled, onGuess, height }) {
   const [editing,setEditing]=useState(false);
   const [v,setV]=useState(""); const [err,setErr]=useState(false);
   const sc = solvedBy==="p1"?P1C:P2C;
-  const h = desktop ? 62 : 48;
+  const h = height || 48;
+
   if (solved) return (
-    <div style={{...tbBase(h),background:sc,boxShadow:"0 3px 0 rgba(0,0,0,.35)"}}>
-      <span style={{fontSize:desktop?13:12,fontWeight:900,color:"#fff",textAlign:"center",padding:"0 4px"}}>✓ {theme}</span>
+    <div style={{width:"100%",height:h,borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",background:sc,boxShadow:"0 3px 0 rgba(0,0,0,.35)"}}>
+      <span style={{fontSize:"clamp(10px,1vw,13px)",fontWeight:900,color:"#fff",textAlign:"center",padding:"0 6px"}}>✓ {theme}</span>
     </div>
   );
-  const submit=()=>{ if(!v.trim()) return; if(!onGuess(v)){setErr(true);setTimeout(()=>setErr(false),600);}else{setV("");setEditing(false);} };
+  const sub=()=>{ if(!v.trim()) return; if(!onGuess(v)){setErr(true);setTimeout(()=>setErr(false),600);}else{setV("");setEditing(false);} };
   if (!disabled&&editing) return (
-    <div style={{...tbBase(h),background:"#fff",animation:err?"shake .4s":"none",padding:"0 8px",gap:6}}>
-      <input value={v} onChange={e=>setV(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")submit();if(e.key==="Escape")setEditing(false);}}
+    <div style={{width:"100%",height:h,borderRadius:8,display:"flex",alignItems:"center",gap:4,padding:"0 6px",background:"#fff",animation:err?"shake .4s":"none",boxSizing:"border-box"}}>
+      <input value={v} onChange={e=>setV(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")sub();if(e.key==="Escape")setEditing(false);}}
         placeholder={`Col ${colId}...`} autoFocus
-        style={{flex:1,background:"transparent",border:"none",fontSize:13,fontWeight:700,outline:"none",fontFamily:"inherit",color:"#1a2a4a"}}/>
-      <button onClick={submit} style={{background:FC,border:"none",borderRadius:8,padding:"5px 10px",color:"#fff",fontWeight:900,cursor:"pointer",fontSize:11,flexShrink:0}}>OK</button>
-      <button onClick={()=>setEditing(false)} style={{background:"#eee",border:"none",borderRadius:8,padding:"5px 7px",color:"#666",fontWeight:700,cursor:"pointer",fontSize:11}}>✕</button>
+        style={{flex:1,background:"transparent",border:"none",fontSize:12,fontWeight:700,outline:"none",fontFamily:"inherit",color:"#1a2a4a",minWidth:0}}/>
+      <button onClick={sub} style={{background:"#3d5068",border:"none",borderRadius:6,padding:"4px 8px",color:"#fff",fontWeight:900,cursor:"pointer",fontSize:10,flexShrink:0}}>OK</button>
+      <button onClick={()=>setEditing(false)} style={{background:"#ddd",border:"none",borderRadius:6,padding:"4px 6px",color:"#666",fontWeight:700,cursor:"pointer",fontSize:10}}>✕</button>
     </div>
   );
   return (
-    <div onClick={disabled?undefined:()=>setEditing(true)} style={{...tbBase(h),background:disabled?"#2a3a55":"rgba(255,255,255,.12)",border:`2px dashed ${disabled?"#3a4a6b":"#a0b4d0"}`,cursor:disabled?"default":"pointer"}}
-      onMouseEnter={e=>{ if(!disabled) e.currentTarget.style.background="rgba(255,255,255,.2)"; }}
-      onMouseLeave={e=>{ if(!disabled) e.currentTarget.style.background="rgba(255,255,255,.12)"; }}>
-      <span style={{fontSize:24,color:disabled?"#3a4a6b":"#a0c4e0",fontWeight:900}}>?</span>
+    <div onClick={disabled?undefined:()=>setEditing(true)}
+      style={{width:"100%",height:h,borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",background:disabled?"#2a3a55":"rgba(255,255,255,.15)",border:`2px dashed ${disabled?"#3a4a6b":"#8ab0d0"}`,cursor:disabled?"default":"pointer",transition:"all .15s"}}
+      onMouseEnter={e=>{ if(!disabled) e.currentTarget.style.background="rgba(255,255,255,.25)"; }}
+      onMouseLeave={e=>{ if(!disabled) e.currentTarget.style.background="rgba(255,255,255,.15)"; }}>
+      <span style={{fontSize:20,color:disabled?"#3a4a6b":"#a0c4e0",fontWeight:900}}>?</span>
     </div>
   );
 }
-const tbBase=(h)=>({width:"100%",height:h,borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 3px 0 rgba(0,0,0,.3)",transition:"all .15s",userSelect:"none",boxSizing:"border-box"});
 
-/* ── FINAL BTN ── */
-function FinalBtn({ solved, solvedBy, answer, disabled, onGuess, desktop }) {
+/* ── FINAL INPUT ── */
+function FinalInput({ solved, solvedBy, answer, disabled, onGuess, height }) {
   const [editing,setEditing]=useState(false);
   const [v,setV]=useState(""); const [err,setErr]=useState(false);
   const sc = solvedBy==="p1"?P1C:P2C;
-  const h = desktop ? 70 : 58;
+  const h = height || 56;
+
   if (solved) return (
-    <div style={{...fbBase(h),background:sc,boxShadow:"0 4px 0 rgba(0,0,0,.4)"}}>
-      <span style={{fontSize:desktop?17:15,fontWeight:900,color:"#fff",letterSpacing:1}}>✓ {answer}</span>
+    <div style={{width:"100%",height:h,borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",background:sc,boxShadow:"0 4px 0 rgba(0,0,0,.4)"}}>
+      <span style={{fontSize:16,fontWeight:900,color:"#fff",letterSpacing:1}}>✓ {answer}</span>
     </div>
   );
-  const submit=()=>{ if(!v.trim()) return; if(!onGuess(v)){setErr(true);setTimeout(()=>setErr(false),600);}else{setV("");setEditing(false);} };
+  const sub=()=>{ if(!v.trim()) return; if(!onGuess(v)){setErr(true);setTimeout(()=>setErr(false),600);}else{setV("");setEditing(false);} };
   if (!disabled&&editing) return (
-    <div style={{...fbBase(h),background:"#fff",animation:err?"shake .4s":"none",flexDirection:"row",padding:"0 12px",gap:10}}>
-      <input value={v} onChange={e=>setV(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")submit();if(e.key==="Escape")setEditing(false);}}
+    <div style={{width:"100%",height:h,borderRadius:10,display:"flex",alignItems:"center",gap:8,padding:"0 12px",background:"#fff",animation:err?"shake .4s":"none",boxSizing:"border-box"}}>
+      <input value={v} onChange={e=>setV(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")sub();if(e.key==="Escape")setEditing(false);}}
         placeholder="Final answer..." autoFocus
-        style={{flex:1,background:"transparent",border:"none",fontSize:16,fontWeight:700,outline:"none",fontFamily:"inherit",color:"#1a2a4a",textAlign:"center"}}/>
-      <button onClick={submit} style={{background:"#f59e0b",border:"none",borderRadius:8,padding:"8px 16px",color:"#fff",fontWeight:900,cursor:"pointer",fontSize:14,flexShrink:0}}>OK</button>
+        style={{flex:1,background:"transparent",border:"none",fontSize:15,fontWeight:700,outline:"none",fontFamily:"inherit",color:"#1a2a4a",textAlign:"center"}}/>
+      <button onClick={sub} style={{background:"#f59e0b",border:"none",borderRadius:8,padding:"8px 16px",color:"#fff",fontWeight:900,cursor:"pointer",fontSize:13,flexShrink:0}}>OK</button>
     </div>
   );
   return (
-    <div onClick={disabled?undefined:()=>setEditing(true)} style={{...fbBase(h),background:disabled?"#2a3a55":"rgba(255,255,255,.12)",border:`3px dashed ${disabled?"#3a4a6b":"#f59e0b"}`,cursor:disabled?"default":"pointer"}}
-      onMouseEnter={e=>{ if(!disabled) e.currentTarget.style.background="rgba(255,255,255,.2)"; }}
-      onMouseLeave={e=>{ if(!disabled) e.currentTarget.style.background="rgba(255,255,255,.12)"; }}>
-      <span style={{fontSize:30,color:disabled?"#3a4a6b":"#f59e0b",fontWeight:900}}>?</span>
+    <div onClick={disabled?undefined:()=>setEditing(true)}
+      style={{width:"100%",height:h,borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",background:disabled?"#2a3a55":"rgba(255,255,255,.15)",border:`3px dashed ${disabled?"#3a4a6b":"#f59e0b"}`,cursor:disabled?"default":"pointer",transition:"all .15s"}}
+      onMouseEnter={e=>{ if(!disabled) e.currentTarget.style.background="rgba(255,255,255,.25)"; }}
+      onMouseLeave={e=>{ if(!disabled) e.currentTarget.style.background="rgba(255,255,255,.15)"; }}>
+      <span style={{fontSize:26,color:disabled?"#3a4a6b":"#f59e0b",fontWeight:900}}>?</span>
     </div>
   );
 }
-const fbBase=(h)=>({width:"100%",height:h,borderRadius:14,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",boxShadow:"0 4px 0 rgba(0,0,0,.4)",transition:"all .15s",userSelect:"none",boxSizing:"border-box"});
+
+/* ── MOBILE FIELD (fixed height, simpler) ── */
+function MobileField({ field, state, solvedBy, canOpen, onOpen }) {
+  const bg =
+    state === "solved" ? (solvedBy==="p1" ? P1C : P2C) :
+    state === "clue"   ? "#c47d0e" :
+    canOpen            ? "#5a7595" : "#3d5068";
+  const base = {width:"100%",height:54,borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:2,padding:"0 8px",boxSizing:"border-box",userSelect:"none",border:"none",fontFamily:"inherit",transition:"all .15s",cursor:canOpen&&state==="hidden"?"pointer":"default",background:bg,boxShadow:state==="solved"?"0 3px 0 rgba(0,0,0,.35)":canOpen?"0 2px 0 rgba(0,0,0,.3)":"none"};
+  if (state==="solved") return <div style={base}><div style={{fontSize:13,fontWeight:900,color:"#fff",letterSpacing:.5,textAlign:"center"}}>{field.answer}</div><div style={{fontSize:9,color:"rgba(255,255,255,.75)",textAlign:"center"}}>{field.clue}</div></div>;
+  if (state==="clue") return <div style={{...base,border:"2px solid rgba(255,255,255,.6)"}}><div style={{fontSize:8,color:"rgba(255,255,255,.8)"}}>CLUE</div><div style={{fontSize:12,color:"#fff",textAlign:"center",fontWeight:700}}>{field.clue}</div></div>;
+  return <div onClick={canOpen?()=>onOpen(field.id):undefined} style={base} onMouseEnter={e=>{if(canOpen)e.currentTarget.style.background="#6a88a8";}} onMouseLeave={e=>{if(canOpen)e.currentTarget.style.background="#5a7595";}}><div style={{fontSize:15,fontWeight:900,color:canOpen?"#c8d8e8":"#3a4a5a",letterSpacing:1}}>{field.id}</div></div>;
+}
 
 function Spin({msg}) {
   return <div style={ROOT}><style>{CSS}</style><div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:14}}>
@@ -228,9 +252,6 @@ function Spin({msg}) {
   </div></div>;
 }
 
-/* ════════════════════════════════════════════════════
-   MAIN APP
-════════════════════════════════════════════════════ */
 export default function App() {
   const [uid]=useState(()=>getUserId());
   const [scr,setScr]=useState("lobby");
@@ -262,7 +283,7 @@ export default function App() {
   useEffect(()=>{
     const check=()=>setIsDesktop(window.innerWidth>=768);
     window.addEventListener("resize",check);
-    return ()=>window.removeEventListener("resize",check);
+    return()=>window.removeEventListener("resize",check);
   },[]);
 
   useEffect(()=>{
@@ -279,7 +300,7 @@ export default function App() {
         if(d.status==="finished") setScr("result");
         if(d.status==="active"&&d.p1&&d.p2&&!started){ setStarted(true); lastAct.current=Date.now(); }
       });
-      return ()=>unsub();
+      return()=>unsub();
     } catch(e){ console.error(e); }
   },[roomId,started]);
 
@@ -290,10 +311,9 @@ export default function App() {
     tRef.current=setInterval(()=>{
       setTtimer(t=>{ if(t<=1){clearInterval(tRef.current);autoReveal();return TURN_SEC;} return t-1; });
     },1000);
-    return ()=>clearInterval(tRef.current);
+    return()=>clearInterval(tRef.current);
   },[gs?.currentTurn,gs?.finalPhase,scr,started]);
 
-  // FIX: Winner by POINTS when idle expires
   useEffect(()=>{
     if(!gs?.finalPhase||gs?.status==="finished"||!started) return;
     clearInterval(iRef.current);
@@ -303,10 +323,10 @@ export default function App() {
       if(rem<=0){
         clearInterval(iRef.current);
         const p1=gs.scores?.p1||0, p2=gs.scores?.p2||0;
-        doEnd(p1>=p2?"p1":"p2",`Time's up! Winner by points (${p1} vs ${p2})`);
+        doEnd(p1>=p2?"p1":"p2",`Time's up! ${p1>=p2?myRole==="p1"?myNm:opNm:myRole==="p2"?myNm:opNm} wins by points!`);
       }
     },1000);
-    return ()=>clearInterval(iRef.current);
+    return()=>clearInterval(iRef.current);
   },[gs?.finalPhase,gs?.status,started]);
 
   useEffect(()=>{
@@ -322,7 +342,7 @@ export default function App() {
         const d=snap.val();
         if(d?.status==="active"&&d.p1&&d.p2){ setGs(d);setStarted(true);lastAct.current=Date.now();setScr("game");L("Opponent joined! Your turn!"); }
       });
-      return ()=>unsub();
+      return()=>unsub();
     } catch(e){ console.error(e); }
   },[scr,roomId]);
 
@@ -332,8 +352,8 @@ export default function App() {
     if(!nm.trim()||!uid) return;
     if(!wallet){alert("Connect Phantom wallet first!");return;}
     setScr("loading"); setLdmsg("Preparing new board...");
-    const board=getRandomBoard(); // Always fresh random board
-    await new Promise(r=>setTimeout(r,800)); // Small delay for UX
+    const board=getRandomBoard();
+    await new Promise(r=>setTimeout(r,600));
     setLdmsg("Confirming wager...");
     const tx=await signWager(wager);
     if(!tx.ok){alert("Wager failed: "+tx.err);setScr("lobby");return;}
@@ -344,7 +364,7 @@ export default function App() {
         status:"waiting",wager,board,scores:{p1:0,p2:0},revealed:{},
         colSolved:{A:null,B:null,C:null,D:null},
         finalSolved:null,finalPhase:false,currentTurn:"p1",
-        lastActivity:Date.now(),winner:null,p1tx:tx.id,createdAt:Date.now()
+        lastActivity:Date.now(),winner:null,p1tx:tx.id,boardId:board.id
       });
       setRoomId(id);setMyRole("p1");setStarted(false);setScr("waiting");
     } catch(e){alert("Firebase error: "+e.message);setScr("lobby");}
@@ -365,7 +385,7 @@ export default function App() {
       if(!tx.ok){alert("Wager failed: "+tx.err);setScr("lobby");return;}
       await update(ref(db,`games/${id}`),{p2:uid,p2name:nm,p2wallet:wallet,status:"active",currentTurn:"p1",lastActivity:Date.now(),p2tx:tx.id});
       setWager(d.wager);setRoomId(id);setMyRole("p2");setStarted(true);lastAct.current=Date.now();
-      setScr("game");L("Joined! You are P2. P1 goes first.");
+      setScr("game");L("Joined! P2. P1 goes first.");
     } catch(e){setJerr("Error: "+e.message);setScr("lobby");}
   }
 
@@ -400,7 +420,7 @@ export default function App() {
       L("✅ Column "+cid+': "'+col.theme+'" +20pts!');
       return true;
     }
-    L("❌ Wrong theme for "+cid+". Opponent's turn!");
+    L("❌ Wrong. Opponent's turn!");
     await doPass();return false;
   }
 
@@ -445,10 +465,10 @@ export default function App() {
   const opScore=myRole==="p1"?scores.p2:scores.p1;
   const canOpen=isMy&&!didOpen&&!finalPhase&&!winner&&gs?.status==="active"&&started;
   const canGuess=isMy&&(didOpen||finalPhase)&&!winner&&gs?.status==="active"&&started;
-  const fst=fid=>{ const r=revealed[fid]; if(!r) return {state:"hidden",solvedBy:null}; if(r==="clue") return {state:"clue",solvedBy:null}; if(r==="solved_p1") return {state:"solved",solvedBy:"p1"}; if(r==="solved_p2") return {state:"solved",solvedBy:"p2"}; if(r==="solved") return {state:"solved",solvedBy:null}; return {state:"clue",solvedBy:null}; };
+  const fst=fid=>{ const r=revealed[fid]; if(!r) return {state:"hidden",solvedBy:null}; if(r==="clue") return {state:"clue",solvedBy:null}; if(r==="solved_p1") return {state:"solved",solvedBy:"p1"}; if(r==="solved_p2") return {state:"solved",solvedBy:"p2"}; return {state:"clue",solvedBy:null}; };
 
   /* ── LOBBY ── */
-  if(scr==="lobby") return (
+  if(scr==="lobby") return(
     <div style={ROOT}><style>{CSS}</style>
       <div style={{background:"#0f1a30",padding:"12px 16px",borderBottom:"2px solid #f59e0b",textAlign:"center",flexShrink:0}}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:10,marginBottom:2}}>
@@ -472,8 +492,7 @@ export default function App() {
             </button>
           )}
         </div>
-        <input value={nm} onChange={e=>setNm(e.target.value)} placeholder="Your name / username" maxLength={16}
-          style={{width:"100%",background:"rgba(255,255,255,.1)",border:"1px solid rgba(255,255,255,.2)",borderRadius:12,padding:"11px 14px",color:"#fff",fontSize:14,outline:"none",fontFamily:"inherit",boxSizing:"border-box",marginBottom:10}}/>
+        <input value={nm} onChange={e=>setNm(e.target.value)} placeholder="Your name / username" maxLength={16} style={{width:"100%",background:"rgba(255,255,255,.1)",border:"1px solid rgba(255,255,255,.2)",borderRadius:12,padding:"11px 14px",color:"#fff",fontSize:14,outline:"none",fontFamily:"inherit",boxSizing:"border-box",marginBottom:10}}/>
         <div style={{marginBottom:10}}>
           <div style={{fontSize:9,color:"rgba(255,255,255,.4)",letterSpacing:2,marginBottom:6}}>WAGER — FREEDOM TOKENS</div>
           <div style={{display:"flex",gap:8}}>
@@ -488,30 +507,27 @@ export default function App() {
         {mode==="create"&&<button onClick={doCreate} disabled={!nm.trim()||!wallet} style={{width:"100%",padding:"14px 0",background:nm.trim()&&wallet?"linear-gradient(90deg,#f59e0b,#d97706)":"rgba(255,255,255,.1)",color:nm.trim()&&wallet?"#fff":"rgba(255,255,255,.3)",border:"none",borderRadius:12,fontFamily:"inherit",fontSize:14,fontWeight:900,cursor:nm.trim()&&wallet?"pointer":"default",letterSpacing:2,boxShadow:nm.trim()&&wallet?"0 4px 0 rgba(0,0,0,.3)":"none"}}>🎮 CREATE ROOM</button>}
         {mode==="join"&&<div>
           <div style={{fontSize:9,color:"rgba(255,255,255,.4)",letterSpacing:2,marginBottom:6}}>ENTER ROOM ID</div>
-          <input value={jin} onChange={e=>{setJin(e.target.value.toUpperCase());setJerr("");}} maxLength={6} placeholder="ABC123"
-            style={{width:"100%",background:"rgba(255,255,255,.1)",border:`2px solid ${jin.length===6?"#22c55e":"rgba(255,255,255,.2)"}`,borderRadius:12,padding:"12px",color:"#22c55e",fontSize:24,outline:"none",fontFamily:"'Black Ops One',cursive",boxSizing:"border-box",textAlign:"center",letterSpacing:10,marginBottom:6}}/>
+          <input value={jin} onChange={e=>{setJin(e.target.value.toUpperCase());setJerr("");}} maxLength={6} placeholder="ABC123" style={{width:"100%",background:"rgba(255,255,255,.1)",border:`2px solid ${jin.length===6?"#22c55e":"rgba(255,255,255,.2)"}`,borderRadius:12,padding:"12px",color:"#22c55e",fontSize:24,outline:"none",fontFamily:"'Black Ops One',cursive",boxSizing:"border-box",textAlign:"center",letterSpacing:10,marginBottom:6}}/>
           {jerr&&<div style={{padding:"7px 10px",background:"rgba(239,68,68,.15)",border:"1px solid rgba(239,68,68,.4)",borderRadius:8,fontSize:11,color:"#ef4444",marginBottom:6}}>⚠ {jerr}</div>}
           <button onClick={doJoin} disabled={!nm.trim()||!wallet||jin.length<6} style={{width:"100%",padding:"14px 0",background:jin.length===6&&nm.trim()&&wallet?"linear-gradient(90deg,#22c55e,#16a34a)":"rgba(255,255,255,.1)",color:jin.length===6&&nm.trim()&&wallet?"#fff":"rgba(255,255,255,.3)",border:"none",borderRadius:12,fontFamily:"inherit",fontSize:14,fontWeight:900,cursor:jin.length===6&&nm.trim()&&wallet?"pointer":"default",letterSpacing:2}}>🚪 JOIN ROOM</button>
         </div>}
         <div style={{marginTop:12,background:"rgba(255,255,255,.05)",borderRadius:12,padding:"10px",border:"1px solid rgba(255,255,255,.1)"}}>
           <div style={{color:"#f59e0b",fontSize:10,fontWeight:700,letterSpacing:2,marginBottom:6}}>RULES</div>
-          {[["30s/turn","Open 1 field per turn."],["Guessing","Correct = keep turn. Wrong = opponent's turn."],["Time up","30s = random field auto-reveals."],["Final","All open: 60s idle = winner by POINTS."],["Points","Theme +20 · Final +30"]].map(([t,d],i)=>(
+          {[["30s/turn","Open 1 field per turn. Timer starts when both join."],["Guessing","Correct = keep turn. Wrong = opponent's turn."],["Time up","30s expire = random field auto-reveals."],["Final","All fields open: 60s idle = winner by POINTS."],["Points","Column theme +20 · Final answer +30"]].map(([t,d],i)=>(
             <div key={i} style={{display:"flex",gap:8,marginBottom:4}}>
               <span style={{fontSize:9,color:"#f59e0b",fontWeight:700,whiteSpace:"nowrap",minWidth:55}}>{t}</span>
               <span style={{fontSize:10,color:"rgba(255,255,255,.5)",lineHeight:1.4}}>{d}</span>
             </div>
           ))}
         </div>
-        <div style={{textAlign:"center",marginTop:12,paddingBottom:6}}>
-          <span style={{fontFamily:"'Black Ops One',cursive",fontSize:11,letterSpacing:2}}><span style={{color:"#8b5cf6"}}>DEGEN</span><span style={{color:"#22c55e"}}>SAFE</span><span style={{color:"rgba(255,255,255,.3)"}}>.FUN</span></span>
-        </div>
+        <div style={{textAlign:"center",marginTop:12,paddingBottom:6}}><span style={{fontFamily:"'Black Ops One',cursive",fontSize:11,letterSpacing:2}}><span style={{color:"#8b5cf6"}}>DEGEN</span><span style={{color:"#22c55e"}}>SAFE</span><span style={{color:"rgba(255,255,255,.3)"}}>.FUN</span></span></div>
       </div>
     </div>
   );
 
   if(scr==="loading") return <Spin msg={ldmsg}/>;
 
-  if(scr==="waiting") return (
+  if(scr==="waiting") return(
     <div style={ROOT}><style>{CSS}</style>
       <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:14,padding:20}}>
         <div style={{width:56,height:56,border:"4px solid rgba(255,255,255,.1)",borderTop:"4px solid #22c55e",borderRadius:"50%",animation:"spin 1s linear infinite"}}/>
@@ -522,13 +538,12 @@ export default function App() {
           <div style={{fontSize:42,fontFamily:"'Black Ops One',cursive",color:"#22c55e",letterSpacing:10,padding:"14px 28px",background:"rgba(34,197,94,.1)",border:"2px solid rgba(34,197,94,.4)",borderRadius:12}}>{roomId}</div>
           <div style={{fontSize:10,color:"rgba(255,255,255,.3)",marginTop:8}}>Opponent → JOIN ROOM → enter this code</div>
         </div>
-        <button onClick={()=>{try{set(ref(db,`games/${roomId}`),null);}catch(e){} setScr("lobby");setRoomId(null);setMyRole(null);setStarted(false);}}
-          style={{padding:"10px 22px",background:"rgba(255,255,255,.1)",color:"rgba(255,255,255,.6)",border:"1px solid rgba(255,255,255,.2)",borderRadius:10,fontFamily:"inherit",fontSize:11,fontWeight:700,cursor:"pointer"}}>CANCEL</button>
+        <button onClick={()=>{try{set(ref(db,`games/${roomId}`),null);}catch(e){} setScr("lobby");setRoomId(null);setMyRole(null);setStarted(false);}} style={{padding:"10px 22px",background:"rgba(255,255,255,.1)",color:"rgba(255,255,255,.6)",border:"1px solid rgba(255,255,255,.2)",borderRadius:10,fontFamily:"inherit",fontSize:11,fontWeight:700,cursor:"pointer"}}>CANCEL</button>
       </div>
     </div>
   );
 
-  if(scr==="result"||winner) return (
+  if(scr==="result"||winner) return(
     <div style={ROOT}><style>{CSS}</style>
       <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
         <div style={{width:"100%",maxWidth:380,background:"#0f1a30",borderRadius:20,padding:"24px 18px",textAlign:"center",border:"2px solid rgba(255,255,255,.1)"}}>
@@ -554,7 +569,7 @@ export default function App() {
   if(!board) return <Spin msg="Loading..."/>;
   const [colA,colB,colC,colD]=board.columns;
 
-  /* ── SCOREBOARD ── */
+  /* ── SHARED SCOREBOARD ── */
   const SB=(
     <div style={{background:"#0f1a30",padding:"7px 14px",borderBottom:"2px solid #f59e0b",flexShrink:0}}>
       <div style={{display:"flex",alignItems:"center",gap:8}}>
@@ -588,59 +603,78 @@ export default function App() {
     </div>
   );
 
-  /* ════════════════════════════════════════════════
-     DESKTOP — X layout, bigger fields
-  ════════════════════════════════════════════════ */
+  /* ══════════════════════════════════════════════
+     DESKTOP — True X layout, 4:1 ratio fields
+     
+     Uses CSS Grid with named areas for perfect X:
+     
+     [lA] [A4 A3 A2 A1] [tA] [FIN] [tB] [B1 B2 B3 B4] [lB]
+     [lC] [C4 C3 C2 C1] [tC] [   ] [tD] [D1 D2 D3 D4] [lD]
+  ══════════════════════════════════════════════ */
   if(isDesktop){
-    const G=8;
-    const lbl=(txt,color)=><span style={{fontFamily:"'Black Ops One',cursive",fontSize:22,color,letterSpacing:3,textShadow:`0 0 10px ${color}66`}}>{txt}</span>;
+    const GAP=10;
+    const TH=56; // theme input height
+    const FH=56; // final box height (per row)
+
     return(
       <div style={ROOT}><style>{CSS}</style>
       {SB}
-      <div style={{flex:1,overflowY:"auto",padding:"14px 20px"}}>
-        <div style={{maxWidth:1200,margin:"0 auto"}}>
+      <div style={{flex:1,overflowY:"auto",padding:"16px 24px"}}>
+        <div style={{maxWidth:1300,margin:"0 auto"}}>
 
-          {/* TOP ROW: A ... B */}
-          <div style={{display:"flex",gap:G,alignItems:"stretch",marginBottom:G}}>
-            <div style={{width:30,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{lbl("A",P1C)}</div>
-            <div style={{flex:1,display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:G}}>
-              {[...colA.fields].reverse().map(f=>{ const {state,solvedBy}=fst(f.id); return <FieldBtn key={f.id} field={f} state={state} solvedBy={solvedBy} canOpen={canOpen&&state==="hidden"} onOpen={doOpen} desktop={true}/>; })}
+          {/* ── ROW 1: A fields | Theme A | Final | Theme B | B fields ── */}
+          <div style={{display:"grid", gridTemplateColumns:"24px 1fr 110px 110px 110px 1fr 24px", gap:GAP, alignItems:"center", marginBottom:GAP}}>
+            {/* A label */}
+            <div style={{textAlign:"center"}}><span style={{fontFamily:"'Black Ops One',cursive",fontSize:22,color:P1C,textShadow:`0 0 10px ${P1C}66`}}>A</span></div>
+            {/* A4 A3 A2 A1 */}
+            <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6}}>
+              {[...colA.fields].reverse().map(f=>{ const {state,solvedBy}=fst(f.id); return <Field key={f.id} field={f} state={state} solvedBy={solvedBy} canOpen={canOpen&&state==="hidden"} onOpen={doOpen}/>; })}
             </div>
-            <div style={{width:150,display:"flex",alignItems:"center",flexShrink:0}}><ThemeBtn colId="A" solved={!!colSolved.A} solvedBy={colSolved.A} theme={colA.theme} disabled={!canGuess} onGuess={v=>doGuessCol("A",v)} desktop={true}/></div>
-            {/* FINAL — spans 2 rows */}
-            <div style={{width:130,flexShrink:0,display:"flex",flexDirection:"column"}}>
-              <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",background:finalPhase?"rgba(245,158,11,.1)":"#060c18",border:`2px solid ${finalPhase?"#f59e0b88":"#1a2a4a"}`,borderRadius:12,padding:10,textAlign:"center",animation:finalPhase?"glowPulse 2s infinite":"none",minHeight:(62*2)+G}}>
-                <div style={{fontSize:9,color:"#444",letterSpacing:1,marginBottom:6}}>FINAL</div>
-                {finalSolved?<div style={{fontSize:13,fontWeight:900,color:finalSolved==="p1"?P1C:P2C}}>{board.final.answer}</div>:<div style={{fontSize:26,color:"#1a2a3a",fontWeight:900,fontFamily:"'Black Ops One',cursive",lineHeight:1}}>???</div>}
-                <div style={{fontSize:8,color:"#1a2a3a",marginTop:6}}>{board.final.hint}</div>
-              </div>
+            {/* Theme A */}
+            <ThemeInput colId="A" solved={!!colSolved.A} solvedBy={colSolved.A} theme={colA.theme} disabled={!canGuess} onGuess={v=>doGuessCol("A",v)} height={TH}/>
+            {/* FINAL BOX - spans both rows via CSS (we'll handle with rowSpan via absolute positioning) */}
+            <div style={{height:TH*2+GAP,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",background:finalPhase?"rgba(245,158,11,.1)":"#060c18",border:`2px solid ${finalPhase?"#f59e0b88":"#1a2a4a"}`,borderRadius:12,textAlign:"center",animation:finalPhase?"glowPulse 2s infinite":"none",gridRow:"1/3"}}>
+              <div style={{fontSize:8,color:"#555",letterSpacing:1,marginBottom:4}}>FINAL</div>
+              {finalSolved?<div style={{fontSize:12,fontWeight:900,color:finalSolved==="p1"?P1C:P2C}}>{board.final.answer}</div>:<div style={{fontSize:22,color:"#1a2a3a",fontWeight:900,fontFamily:"'Black Ops One',cursive",lineHeight:1}}>???</div>}
+              <div style={{fontSize:7,color:"#1a2a3a",marginTop:4}}>{board.final.hint}</div>
             </div>
-            <div style={{width:150,display:"flex",alignItems:"center",flexShrink:0}}><ThemeBtn colId="B" solved={!!colSolved.B} solvedBy={colSolved.B} theme={colB.theme} disabled={!canGuess} onGuess={v=>doGuessCol("B",v)} desktop={true}/></div>
-            <div style={{flex:1,display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:G}}>
-              {colB.fields.map(f=>{ const {state,solvedBy}=fst(f.id); return <FieldBtn key={f.id} field={f} state={state} solvedBy={solvedBy} canOpen={canOpen&&state==="hidden"} onOpen={doOpen} desktop={true}/>; })}
+            {/* Theme B */}
+            <ThemeInput colId="B" solved={!!colSolved.B} solvedBy={colSolved.B} theme={colB.theme} disabled={!canGuess} onGuess={v=>doGuessCol("B",v)} height={TH}/>
+            {/* B1 B2 B3 B4 */}
+            <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6}}>
+              {colB.fields.map(f=>{ const {state,solvedBy}=fst(f.id); return <Field key={f.id} field={f} state={state} solvedBy={solvedBy} canOpen={canOpen&&state==="hidden"} onOpen={doOpen}/>; })}
             </div>
-            <div style={{width:30,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{lbl("B",P2C)}</div>
+            {/* B label */}
+            <div style={{textAlign:"center"}}><span style={{fontFamily:"'Black Ops One',cursive",fontSize:22,color:P2C,textShadow:`0 0 10px ${P2C}66`}}>B</span></div>
           </div>
 
-          {/* BOTTOM ROW: C ... D */}
-          <div style={{display:"flex",gap:G,alignItems:"stretch",marginBottom:14}}>
-            <div style={{width:30,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{lbl("C",P1C)}</div>
-            <div style={{flex:1,display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:G}}>
-              {[...colC.fields].reverse().map(f=>{ const {state,solvedBy}=fst(f.id); return <FieldBtn key={f.id} field={f} state={state} solvedBy={solvedBy} canOpen={canOpen&&state==="hidden"} onOpen={doOpen} desktop={true}/>; })}
+          {/* ── ROW 2: C fields | Theme C | spacer | Theme D | D fields ── */}
+          <div style={{display:"grid", gridTemplateColumns:"24px 1fr 110px 110px 110px 1fr 24px", gap:GAP, alignItems:"center", marginBottom:16}}>
+            {/* C label */}
+            <div style={{textAlign:"center"}}><span style={{fontFamily:"'Black Ops One',cursive",fontSize:22,color:P1C,textShadow:`0 0 10px ${P1C}66`}}>C</span></div>
+            {/* C4 C3 C2 C1 */}
+            <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6}}>
+              {[...colC.fields].reverse().map(f=>{ const {state,solvedBy}=fst(f.id); return <Field key={f.id} field={f} state={state} solvedBy={solvedBy} canOpen={canOpen&&state==="hidden"} onOpen={doOpen}/>; })}
             </div>
-            <div style={{width:150,display:"flex",alignItems:"center",flexShrink:0}}><ThemeBtn colId="C" solved={!!colSolved.C} solvedBy={colSolved.C} theme={colC.theme} disabled={!canGuess} onGuess={v=>doGuessCol("C",v)} desktop={true}/></div>
-            <div style={{width:130,flexShrink:0}}/>
-            <div style={{width:150,display:"flex",alignItems:"center",flexShrink:0}}><ThemeBtn colId="D" solved={!!colSolved.D} solvedBy={colSolved.D} theme={colD.theme} disabled={!canGuess} onGuess={v=>doGuessCol("D",v)} desktop={true}/></div>
-            <div style={{flex:1,display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:G}}>
-              {colD.fields.map(f=>{ const {state,solvedBy}=fst(f.id); return <FieldBtn key={f.id} field={f} state={state} solvedBy={solvedBy} canOpen={canOpen&&state==="hidden"} onOpen={doOpen} desktop={true}/>; })}
+            {/* Theme C */}
+            <ThemeInput colId="C" solved={!!colSolved.C} solvedBy={colSolved.C} theme={colC.theme} disabled={!canGuess} onGuess={v=>doGuessCol("C",v)} height={TH}/>
+            {/* Spacer (under final box) */}
+            <div/>
+            {/* Theme D */}
+            <ThemeInput colId="D" solved={!!colSolved.D} solvedBy={colSolved.D} theme={colD.theme} disabled={!canGuess} onGuess={v=>doGuessCol("D",v)} height={TH}/>
+            {/* D1 D2 D3 D4 */}
+            <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6}}>
+              {colD.fields.map(f=>{ const {state,solvedBy}=fst(f.id); return <Field key={f.id} field={f} state={state} solvedBy={solvedBy} canOpen={canOpen&&state==="hidden"} onOpen={doOpen}/>; })}
             </div>
-            <div style={{width:30,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{lbl("D",P2C)}</div>
+            {/* D label */}
+            <div style={{textAlign:"center"}}><span style={{fontFamily:"'Black Ops One',cursive",fontSize:22,color:P2C,textShadow:`0 0 10px ${P2C}66`}}>D</span></div>
           </div>
 
           {/* FINAL INPUT */}
-          <div style={{maxWidth:480,margin:"0 auto 10px"}}>
-            <FinalBtn solved={!!finalSolved} solvedBy={finalSolved} answer={board.final.answer} disabled={!canGuess} onGuess={doGuessFinal} desktop={true}/>
+          <div style={{maxWidth:500,margin:"0 auto 12px"}}>
+            <FinalInput solved={!!finalSolved} solvedBy={finalSolved} answer={board.final.answer} disabled={!canGuess} onGuess={doGuessFinal} height={56}/>
           </div>
+
           {PL}
           <div style={{textAlign:"center",padding:"8px 0 2px"}}><span style={{fontFamily:"'Black Ops One',cursive",fontSize:10,letterSpacing:2}}><span style={{color:"#8b5cf6"}}>DEGEN</span><span style={{color:"#22c55e"}}>SAFE</span><span style={{color:"rgba(255,255,255,.3)"}}>.FUN</span></span></div>
         </div>
@@ -649,9 +683,9 @@ export default function App() {
     );
   }
 
-  /* ════════════════════════════════════════════════
-     MOBILE — vertical layout
-  ════════════════════════════════════════════════ */
+  /* ══════════════════════════════════════════════
+     MOBILE — vertical layout (unchanged)
+  ══════════════════════════════════════════════ */
   return(
     <div style={ROOT}><style>{CSS}</style>
     {SB}
@@ -663,21 +697,21 @@ export default function App() {
         </div>
         {[0,1,2,3].map(i=>(
           <div key={i} style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
-            {[colA.fields[i],colB.fields[i]].map(f=>{ const {state,solvedBy}=fst(f.id); return <FieldBtn key={f.id} field={f} state={state} solvedBy={solvedBy} canOpen={canOpen&&state==="hidden"} onOpen={doOpen}/>; })}
+            {[colA.fields[i],colB.fields[i]].map(f=>{ const {state,solvedBy}=fst(f.id); return <MobileField key={f.id} field={f} state={state} solvedBy={solvedBy} canOpen={canOpen&&state==="hidden"} onOpen={doOpen}/>; })}
           </div>
         ))}
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
-          <ThemeBtn colId="A" solved={!!colSolved.A} solvedBy={colSolved.A} theme={colA.theme} disabled={!canGuess} onGuess={v=>doGuessCol("A",v)}/>
-          <ThemeBtn colId="B" solved={!!colSolved.B} solvedBy={colSolved.B} theme={colB.theme} disabled={!canGuess} onGuess={v=>doGuessCol("B",v)}/>
+          <ThemeInput colId="A" solved={!!colSolved.A} solvedBy={colSolved.A} theme={colA.theme} disabled={!canGuess} onGuess={v=>doGuessCol("A",v)}/>
+          <ThemeInput colId="B" solved={!!colSolved.B} solvedBy={colSolved.B} theme={colB.theme} disabled={!canGuess} onGuess={v=>doGuessCol("B",v)}/>
         </div>
-        <FinalBtn solved={!!finalSolved} solvedBy={finalSolved} answer={board.final.answer} disabled={!canGuess} onGuess={doGuessFinal}/>
+        <FinalInput solved={!!finalSolved} solvedBy={finalSolved} answer={board.final.answer} disabled={!canGuess} onGuess={doGuessFinal}/>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
-          <ThemeBtn colId="C" solved={!!colSolved.C} solvedBy={colSolved.C} theme={colC.theme} disabled={!canGuess} onGuess={v=>doGuessCol("C",v)}/>
-          <ThemeBtn colId="D" solved={!!colSolved.D} solvedBy={colSolved.D} theme={colD.theme} disabled={!canGuess} onGuess={v=>doGuessCol("D",v)}/>
+          <ThemeInput colId="C" solved={!!colSolved.C} solvedBy={colSolved.C} theme={colC.theme} disabled={!canGuess} onGuess={v=>doGuessCol("C",v)}/>
+          <ThemeInput colId="D" solved={!!colSolved.D} solvedBy={colSolved.D} theme={colD.theme} disabled={!canGuess} onGuess={v=>doGuessCol("D",v)}/>
         </div>
         {[0,1,2,3].map(i=>(
           <div key={i} style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
-            {[colC.fields[i],colD.fields[i]].map(f=>{ const {state,solvedBy}=fst(f.id); return <FieldBtn key={f.id} field={f} state={state} solvedBy={solvedBy} canOpen={canOpen&&state==="hidden"} onOpen={doOpen}/>; })}
+            {[colC.fields[i],colD.fields[i]].map(f=>{ const {state,solvedBy}=fst(f.id); return <MobileField key={f.id} field={f} state={state} solvedBy={solvedBy} canOpen={canOpen&&state==="hidden"} onOpen={doOpen}/>; })}
           </div>
         ))}
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
