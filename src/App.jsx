@@ -160,7 +160,7 @@ function Field({ field, state, solvedBy, canOpen, onOpen, h=70 }) {
   const border = state==="clue" ? "2px solid #5b9bd5" : state==="solved" ? "none" : canOpen ? "1px solid #3a6a9a" : "1px solid #1e3550";
 
   const s = {
-    width:"100%", height:h,
+    width:"100%", height:h==="100%"?"100%":h,
     borderRadius:8, display:"flex",
     alignItems:"center", justifyContent:"center",
     flexDirection:"column", gap:2,
@@ -198,15 +198,16 @@ function Field({ field, state, solvedBy, canOpen, onOpen, h=70 }) {
 function ThemeInput({ colId, solved, solvedBy, theme, disabled, onGuess, h=70 }) {
   const [ed,setEd]=useState(false); const [v,setV]=useState(""); const [err,setErr]=useState(false);
   const sc=solvedBy==="p1"?P1C:P2C;
+  const hpx = h==="100%"?"100%":h;
   const sub=()=>{ if(!v.trim()) return; if(!onGuess(v)){setErr(true);setTimeout(()=>setErr(false),600);}else{setV("");setEd(false);} };
 
   if (solved) return (
-    <div style={{width:"100%",height:h,borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",background:sc,boxShadow:"0 3px 0 rgba(0,0,0,.4)"}}>
+    <div style={{width:"100%",height:hpx,borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",background:sc,boxShadow:"0 3px 0 rgba(0,0,0,.4)"}}>
       <span style={{fontSize:"clamp(10px,1vw,13px)",fontWeight:900,color:"#fff",textAlign:"center",padding:"0 6px"}}>✓ {theme}</span>
     </div>
   );
   if (!disabled&&ed) return (
-    <div style={{width:"100%",height:h,borderRadius:8,display:"flex",alignItems:"center",gap:4,padding:"0 6px",background:"#fff",animation:err?"shake .4s":"none",boxSizing:"border-box"}}>
+    <div style={{width:"100%",height:hpx,borderRadius:8,display:"flex",alignItems:"center",gap:4,padding:"0 6px",background:"#fff",animation:err?"shake .4s":"none",boxSizing:"border-box"}}>
       <input value={v} onChange={e=>setV(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")sub();if(e.key==="Escape")setEd(false);}}
         placeholder={`Col ${colId}...`} autoFocus
         style={{flex:1,background:"transparent",border:"none",fontSize:11,fontWeight:700,outline:"none",fontFamily:"inherit",color:"#1a2a4a",minWidth:0}}/>
@@ -216,7 +217,7 @@ function ThemeInput({ colId, solved, solvedBy, theme, disabled, onGuess, h=70 })
   );
   return (
     <div onClick={disabled?undefined:()=>setEd(true)}
-      style={{width:"100%",height:h,borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",background:disabled?"#0f1e30":"rgba(45,90,138,.4)",border:`2px dashed ${disabled?"#1a3450":"#5b9bd5"}`,cursor:disabled?"default":"pointer",transition:"all .15s"}}
+      style={{width:"100%",height:hpx,borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",background:disabled?"#0f1e30":"rgba(45,90,138,.4)",border:`2px dashed ${disabled?"#1a3450":"#5b9bd5"}`,cursor:disabled?"default":"pointer",transition:"all .15s"}}
       onMouseEnter={e=>{ if(!disabled) e.currentTarget.style.background="rgba(45,90,138,.6)"; }}
       onMouseLeave={e=>{ if(!disabled) e.currentTarget.style.background="rgba(45,90,138,.4)"; }}>
       <span style={{fontSize:22,color:disabled?"#1a3450":"#7ab8e0",fontWeight:900}}>?</span>
@@ -593,23 +594,25 @@ export default function App() {
      CSS Grid: label | 4 fields | theme | FINAL | theme | 4 fields | label
   ══════════════════════════════════════════════ */
   if(desktop){
-    const G=8;
-    const FH=70; // field height px
-    const TW=100; // theme column width
-    const FW=120; // final column width
-    const LW=28;  // label width
+    const G=10;
+    const TW=110; // theme column width
+    const FW=130; // final column width
+    const LW=32;  // label width
 
     return(
       <div style={ROOT}><style>{CSS}</style>
       {SB}
-      <div style={{flex:1,overflowY:"auto",padding:"12px 16px"}}>
+      {/* Full height flex container — board fills entire remaining height */}
+      <div style={{flex:1,display:"flex",flexDirection:"column",padding:"12px 16px",minHeight:0}}>
 
-        {/* FULL WIDTH GRID — no maxWidth */}
+        {/* FULL WIDTH GRID — fills all available height with 1fr rows */}
         <div style={{
           display:"grid",
           gridTemplateColumns:`${LW}px 1fr ${TW}px ${FW}px ${TW}px 1fr ${LW}px`,
-          gridTemplateRows:`${FH}px ${FH}px`,
+          gridTemplateRows:"1fr 1fr",
           gap:G,
+          flex:1,
+          minHeight:0,
           marginBottom:10,
           width:"100%",
         }}>
@@ -620,11 +623,11 @@ export default function App() {
           </div>
           {/* A4 A3 A2 A1 */}
           <div style={{gridColumn:2,gridRow:1,display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6}}>
-            {[...colA.fields].reverse().map(f=>{const{state,solvedBy}=fst(f.id);return <Field key={f.id} field={f} state={state} solvedBy={solvedBy} canOpen={canOpen&&state==="hidden"} onOpen={doOpen} h={FH}/>;}) }
+            {[...colA.fields].reverse().map(f=>{const{state,solvedBy}=fst(f.id);return <Field key={f.id} field={f} state={state} solvedBy={solvedBy} canOpen={canOpen&&state==="hidden"} onOpen={doOpen} h="100%"/>;}) }
           </div>
           {/* Theme A */}
           <div style={{gridColumn:3,gridRow:1}}>
-            <ThemeInput colId="A" solved={!!colSolved.A} solvedBy={colSolved.A} theme={colA.theme} disabled={!canGuess} onGuess={v=>doGuessCol("A",v)} h={FH}/>
+            <ThemeInput colId="A" solved={!!colSolved.A} solvedBy={colSolved.A} theme={colA.theme} disabled={!canGuess} onGuess={v=>doGuessCol("A",v)} h="100%"/>
           </div>
           {/* FINAL — spans rows 1 and 2 */}
           <div style={{gridColumn:4,gridRow:"1 / 3",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",background:finalPhase?"rgba(245,158,11,.08)":"#060e1c",border:`2px solid ${finalPhase?"#f59e0b66":"#1a3450"}`,borderRadius:12,textAlign:"center",animation:finalPhase?"glowPulse 2s infinite":"none",padding:10}}>
@@ -637,11 +640,11 @@ export default function App() {
           </div>
           {/* Theme B */}
           <div style={{gridColumn:5,gridRow:1}}>
-            <ThemeInput colId="B" solved={!!colSolved.B} solvedBy={colSolved.B} theme={colB.theme} disabled={!canGuess} onGuess={v=>doGuessCol("B",v)} h={FH}/>
+            <ThemeInput colId="B" solved={!!colSolved.B} solvedBy={colSolved.B} theme={colB.theme} disabled={!canGuess} onGuess={v=>doGuessCol("B",v)} h="100%"/>
           </div>
           {/* B1 B2 B3 B4 */}
           <div style={{gridColumn:6,gridRow:1,display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6}}>
-            {colB.fields.map(f=>{const{state,solvedBy}=fst(f.id);return <Field key={f.id} field={f} state={state} solvedBy={solvedBy} canOpen={canOpen&&state==="hidden"} onOpen={doOpen} h={FH}/>;}) }
+            {colB.fields.map(f=>{const{state,solvedBy}=fst(f.id);return <Field key={f.id} field={f} state={state} solvedBy={solvedBy} canOpen={canOpen&&state==="hidden"} onOpen={doOpen} h="100%"/>;}) }
           </div>
           {/* B label */}
           <div style={{gridColumn:7,gridRow:1,display:"flex",alignItems:"center",justifyContent:"center"}}>
@@ -655,20 +658,20 @@ export default function App() {
           </div>
           {/* C4 C3 C2 C1 */}
           <div style={{gridColumn:2,gridRow:2,display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6}}>
-            {[...colC.fields].reverse().map(f=>{const{state,solvedBy}=fst(f.id);return <Field key={f.id} field={f} state={state} solvedBy={solvedBy} canOpen={canOpen&&state==="hidden"} onOpen={doOpen} h={FH}/>;}) }
+            {[...colC.fields].reverse().map(f=>{const{state,solvedBy}=fst(f.id);return <Field key={f.id} field={f} state={state} solvedBy={solvedBy} canOpen={canOpen&&state==="hidden"} onOpen={doOpen} h="100%"/>;}) }
           </div>
           {/* Theme C */}
           <div style={{gridColumn:3,gridRow:2}}>
-            <ThemeInput colId="C" solved={!!colSolved.C} solvedBy={colSolved.C} theme={colC.theme} disabled={!canGuess} onGuess={v=>doGuessCol("C",v)} h={FH}/>
+            <ThemeInput colId="C" solved={!!colSolved.C} solvedBy={colSolved.C} theme={colC.theme} disabled={!canGuess} onGuess={v=>doGuessCol("C",v)} h="100%"/>
           </div>
           {/* col 4 = FINAL (already placed, spanning) */}
           {/* Theme D */}
           <div style={{gridColumn:5,gridRow:2}}>
-            <ThemeInput colId="D" solved={!!colSolved.D} solvedBy={colSolved.D} theme={colD.theme} disabled={!canGuess} onGuess={v=>doGuessCol("D",v)} h={FH}/>
+            <ThemeInput colId="D" solved={!!colSolved.D} solvedBy={colSolved.D} theme={colD.theme} disabled={!canGuess} onGuess={v=>doGuessCol("D",v)} h="100%"/>
           </div>
           {/* D1 D2 D3 D4 */}
           <div style={{gridColumn:6,gridRow:2,display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6}}>
-            {colD.fields.map(f=>{const{state,solvedBy}=fst(f.id);return <Field key={f.id} field={f} state={state} solvedBy={solvedBy} canOpen={canOpen&&state==="hidden"} onOpen={doOpen} h={FH}/>;}) }
+            {colD.fields.map(f=>{const{state,solvedBy}=fst(f.id);return <Field key={f.id} field={f} state={state} solvedBy={solvedBy} canOpen={canOpen&&state==="hidden"} onOpen={doOpen} h="100%"/>;}) }
           </div>
           {/* D label */}
           <div style={{gridColumn:7,gridRow:2,display:"flex",alignItems:"center",justifyContent:"center"}}>
@@ -677,11 +680,11 @@ export default function App() {
         </div>
 
         {/* FINAL INPUT */}
-        <div style={{maxWidth:480,margin:"0 auto 10px"}}>
-          <FinalInput solved={!!finalSolved} solvedBy={finalSolved} answer={board.final.answer} disabled={!canGuess} onGuess={doGuessFinal} h={54}/>
+        <div style={{maxWidth:480,margin:"4px auto 6px"}}>
+          <FinalInput solved={!!finalSolved} solvedBy={finalSolved} answer={board.final.answer} disabled={!canGuess} onGuess={doGuessFinal} h={50}/>
         </div>
         {PL}
-        <div style={{textAlign:"center",padding:"8px 0 2px"}}><span style={{fontFamily:"'Black Ops One',cursive",fontSize:10,letterSpacing:2}}><span style={{color:"#8b5cf6"}}>DEGEN</span><span style={{color:"#22c55e"}}>SAFE</span><span style={{color:"rgba(255,255,255,.3)"}}>.FUN</span></span></div>
+        <div style={{textAlign:"center",padding:"4px 0 2px"}}><span style={{fontFamily:"'Black Ops One',cursive",fontSize:10,letterSpacing:2}}><span style={{color:"#8b5cf6"}}>DEGEN</span><span style={{color:"#22c55e"}}>SAFE</span><span style={{color:"rgba(255,255,255,.3)"}}>.FUN</span></span></div>
       </div>
       </div>
     );
