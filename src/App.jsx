@@ -1,9 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import { initializeApp } from "firebase/app";
 import { getDatabase, ref, set, get, update, onValue } from "firebase/database";
-import { getAuth, signInAnonymously } from "firebase/auth";
 
-/* ─── FIREBASE ─── */
+/* ─── FIREBASE (no Auth) ─── */
 const firebaseConfig = {
   apiKey: "AIzaSyAKmKRj7Hhy4K6DsY_XDbqLb3oYOwZC5jw",
   authDomain: "project-freedom-a004e.firebaseapp.com",
@@ -13,17 +12,36 @@ const firebaseConfig = {
   messagingSenderId: "844172246267",
   appId: "1:844172246267:web:a31b8cd6affe8337f7845e",
 };
-const fbApp = initializeApp(firebaseConfig);
-const db = getDatabase(fbApp);
-const auth = getAuth(fbApp);
+
+let db;
+try {
+  const fbApp = initializeApp(firebaseConfig);
+  db = getDatabase(fbApp);
+} catch(e) {
+  console.error("Firebase init error:", e);
+}
+
+/* ─── USER ID via localStorage (no Firebase Auth needed) ─── */
+function getUserId() {
+  try {
+    let id = localStorage.getItem("pgf_uid");
+    if (!id) {
+      id = "u_" + Math.random().toString(36).slice(2, 12);
+      localStorage.setItem("pgf_uid", id);
+    }
+    return id;
+  } catch {
+    return "u_" + Math.random().toString(36).slice(2, 12);
+  }
+}
 
 /* ─── CONSTANTS ─── */
 const ESCROW = "GynyDkXj8WVdP7XDL1nTekF7Azv7ebxA7RCMnY3a3tSu";
 const WAGERS = [100, 500, 1000];
 const TURN_SEC = 30;
 const IDLE_SEC = 60;
-const CA = "#e53935"; // col A & C color (red)
-const CB = "#1e88e5"; // col B & D color (blue)
+const CA = "#e53935";
+const CB = "#1e88e5";
 
 /* ─── PHANTOM ─── */
 async function connectPhantom() {
@@ -36,9 +54,10 @@ async function connectPhantom() {
     return r.publicKey.toString();
   } catch { return null; }
 }
+
 async function signWager(amount) {
   try {
-    if (!window.solana?.isPhantom) return { ok: false, err: "No Phantom wallet" };
+    if (!window.solana?.isPhantom) return { ok: false, err: "No Phantom" };
     await window.solana.signMessage(
       new TextEncoder().encode(`Wager ${amount} FREEDOM to ${ESCROW}`), "utf8"
     );
@@ -55,17 +74,9 @@ async function makeBoard() {
       body: JSON.stringify({
         model: "claude-sonnet-4-20250514",
         max_tokens: 1200,
-        messages: [{
-          role: "user",
-          content: `Make a word association board in English. Return ONLY raw JSON, no markdown.
-{"columns":[
-{"id":"A","theme":"THEME","fields":[{"id":"A1","clue":"clue","answer":"ANSWER"},{"id":"A2","clue":"clue","answer":"ANSWER"},{"id":"A3","clue":"clue","answer":"ANSWER"},{"id":"A4","clue":"clue","answer":"ANSWER"}]},
-{"id":"B","theme":"THEME","fields":[{"id":"B1","clue":"clue","answer":"ANSWER"},{"id":"B2","clue":"clue","answer":"ANSWER"},{"id":"B3","clue":"clue","answer":"ANSWER"},{"id":"B4","clue":"clue","answer":"ANSWER"}]},
-{"id":"C","theme":"THEME","fields":[{"id":"C1","clue":"clue","answer":"ANSWER"},{"id":"C2","clue":"clue","answer":"ANSWER"},{"id":"C3","clue":"clue","answer":"ANSWER"},{"id":"C4","clue":"clue","answer":"ANSWER"}]},
-{"id":"D","theme":"THEME","fields":[{"id":"D1","clue":"clue","answer":"ANSWER"},{"id":"D2","clue":"clue","answer":"ANSWER"},{"id":"D3","clue":"clue","answer":"ANSWER"},{"id":"D4","clue":"clue","answer":"ANSWER"}]}],
-"final":{"answer":"ANSWER","hint":"hint"}}
-4 different themes, English clues max 3 words, single CAPS word answers, final is supercategory of all 4.`
-        }]
+        messages: [{ role: "user", content: `Make a word association board in English. Return ONLY raw JSON, no markdown.
+{"columns":[{"id":"A","theme":"THEME","fields":[{"id":"A1","clue":"clue","answer":"ANSWER"},{"id":"A2","clue":"clue","answer":"ANSWER"},{"id":"A3","clue":"clue","answer":"ANSWER"},{"id":"A4","clue":"clue","answer":"ANSWER"}]},{"id":"B","theme":"THEME","fields":[{"id":"B1","clue":"clue","answer":"ANSWER"},{"id":"B2","clue":"clue","answer":"ANSWER"},{"id":"B3","clue":"clue","answer":"ANSWER"},{"id":"B4","clue":"clue","answer":"ANSWER"}]},{"id":"C","theme":"THEME","fields":[{"id":"C1","clue":"clue","answer":"ANSWER"},{"id":"C2","clue":"clue","answer":"ANSWER"},{"id":"C3","clue":"clue","answer":"ANSWER"},{"id":"C4","clue":"clue","answer":"ANSWER"}]},{"id":"D","theme":"THEME","fields":[{"id":"D1","clue":"clue","answer":"ANSWER"},{"id":"D2","clue":"clue","answer":"ANSWER"},{"id":"D3","clue":"clue","answer":"ANSWER"},{"id":"D4","clue":"clue","answer":"ANSWER"}]}],"final":{"answer":"ANSWER","hint":"hint"}}
+4 different themes, English clues max 3 words, single CAPS word answers, final is supercategory of all 4.` }]
       })
     });
     const d = await r.json();
@@ -83,7 +94,6 @@ const FALLBACK = {
   final: { answer: "FREEDOM", hint: "Project Freedom" }
 };
 
-/* ─── HELPERS ─── */
 function nrm(s) { return s.trim().toUpperCase().replace(/[^A-Z0-9]/g, ""); }
 function hit(a, b) { return nrm(a) === nrm(b); }
 function genId() { return Math.random().toString(36).slice(2, 8).toUpperCase(); }
@@ -91,31 +101,22 @@ function genId() { return Math.random().toString(36).slice(2, 8).toUpperCase(); 
 /* ─── FIELD BUTTON ─── */
 function FieldBtn({ field, state, canOpen, color, onOpen }) {
   const bg = color === CA ? "#c62828" : "#1565c0";
-  const s = {
-    width: "100%", height: 54, borderRadius: 12,
-    display: "flex", alignItems: "center", justifyContent: "center",
-    flexDirection: "column", gap: 2, padding: "0 8px",
-    boxSizing: "border-box", userSelect: "none", border: "none",
-    fontFamily: "inherit", transition: "opacity .15s",
-    cursor: canOpen && state === "hidden" ? "pointer" : "default",
-  };
+  const base = { width: "100%", height: 54, borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 2, padding: "0 8px", boxSizing: "border-box", userSelect: "none", border: "none", fontFamily: "inherit", transition: "opacity .15s", cursor: canOpen && state === "hidden" ? "pointer" : "default" };
   if (state === "solved") return (
-    <div style={{ ...s, background: bg, boxShadow: "0 3px 0 rgba(0,0,0,.35)" }}>
+    <div style={{ ...base, background: bg, boxShadow: "0 3px 0 rgba(0,0,0,.35)" }}>
       <div style={{ fontSize: 13, fontWeight: 900, color: "#fff", letterSpacing: .5, textAlign: "center" }}>{field.answer}</div>
       <div style={{ fontSize: 9, color: "rgba(255,255,255,.7)", textAlign: "center" }}>{field.clue}</div>
     </div>
   );
   if (state === "clue") return (
-    <div style={{ ...s, background: bg, boxShadow: "0 3px 0 rgba(0,0,0,.35)", border: "2px solid #fff" }}>
-      <div style={{ fontSize: 8, color: "rgba(255,255,255,.8)", letterSpacing: .5 }}>CLUE</div>
+    <div style={{ ...base, background: bg, boxShadow: "0 3px 0 rgba(0,0,0,.35)", border: "2px solid #fff" }}>
+      <div style={{ fontSize: 8, color: "rgba(255,255,255,.8)" }}>CLUE</div>
       <div style={{ fontSize: 12, color: "#fff", textAlign: "center", fontWeight: 700 }}>{field.clue}</div>
     </div>
   );
   return (
     <div onClick={canOpen ? () => onOpen(field.id) : undefined}
-      style={{ ...s, background: canOpen ? "#3a4a6b" : "#2a3555", boxShadow: canOpen ? "0 3px 0 rgba(0,0,0,.4)" : "none", opacity: canOpen ? 1 : 0.65 }}
-      onMouseEnter={e => { if (canOpen) e.currentTarget.style.opacity = "0.85"; }}
-      onMouseLeave={e => { if (canOpen) e.currentTarget.style.opacity = "1"; }}>
+      style={{ ...base, background: canOpen ? "#3a4a6b" : "#2a3555", boxShadow: canOpen ? "0 3px 0 rgba(0,0,0,.4)" : "none", opacity: canOpen ? 1 : 0.65 }}>
       <div style={{ fontSize: 15, fontWeight: 900, color: canOpen ? "#a0b4d0" : "#4a5a7a", letterSpacing: 1 }}>{field.id}</div>
     </div>
   );
@@ -131,7 +132,7 @@ function ThemeBtn({ colId, solved, theme, disabled, onGuess }) {
 
   if (solved) return (
     <div style={{ ...TB, background: bg, boxShadow: "0 3px 0 rgba(0,0,0,.35)" }}>
-      <span style={{ fontSize: 13, fontWeight: 900, color: "#fff", letterSpacing: .5 }}>✓ {theme}</span>
+      <span style={{ fontSize: 12, fontWeight: 900, color: "#fff", letterSpacing: .5, textAlign: "center", padding: "0 4px" }}>✓ {theme}</span>
     </div>
   );
 
@@ -154,9 +155,7 @@ function ThemeBtn({ colId, solved, theme, disabled, onGuess }) {
 
   return (
     <div onClick={disabled ? undefined : () => setEditing(true)}
-      style={{ ...TB, background: "rgba(255,255,255,.1)", border: `2px dashed ${disabled ? "#3a4a6b" : color}`, cursor: disabled ? "default" : "pointer" }}
-      onMouseEnter={e => { if (!disabled) e.currentTarget.style.background = "rgba(255,255,255,.2)"; }}
-      onMouseLeave={e => { if (!disabled) e.currentTarget.style.background = "rgba(255,255,255,.1)"; }}>
+      style={{ ...TB, background: "rgba(255,255,255,.1)", border: `2px dashed ${disabled ? "#3a4a6b" : color}`, cursor: disabled ? "default" : "pointer" }}>
       <span style={{ fontSize: 22, color: disabled ? "#3a4a6b" : color, fontWeight: 900 }}>?</span>
     </div>
   );
@@ -170,8 +169,8 @@ function FinalBtn({ solved, answer, disabled, onGuess }) {
   const [err, setErr] = useState(false);
 
   if (solved) return (
-    <div style={{ ...FB, background: "#f59e0b", boxShadow: "0 4px 0 rgba(0,0,0,.4)" }}>
-      <span style={{ fontSize: 16, fontWeight: 900, color: "#fff", letterSpacing: 1 }}>✓ {answer}</span>
+    <div style={{ ...FBs, background: "#f59e0b", boxShadow: "0 4px 0 rgba(0,0,0,.4)" }}>
+      <span style={{ fontSize: 15, fontWeight: 900, color: "#fff", letterSpacing: 1 }}>✓ {answer}</span>
     </div>
   );
 
@@ -182,7 +181,7 @@ function FinalBtn({ solved, answer, disabled, onGuess }) {
   };
 
   if (!disabled && editing) return (
-    <div style={{ ...FB, background: "#fff", animation: err ? "shake .4s" : "none", flexDirection: "row", padding: "0 10px", gap: 8 }}>
+    <div style={{ ...FBs, background: "#fff", animation: err ? "shake .4s" : "none", flexDirection: "row", padding: "0 10px", gap: 8 }}>
       <input value={v} onChange={e => setV(e.target.value)}
         onKeyDown={e => { if (e.key === "Enter") submit(); if (e.key === "Escape") setEditing(false); }}
         placeholder="Final answer..." autoFocus
@@ -193,20 +192,16 @@ function FinalBtn({ solved, answer, disabled, onGuess }) {
 
   return (
     <div onClick={disabled ? undefined : () => setEditing(true)}
-      style={{ ...FB, background: disabled ? "#2a3555" : "rgba(255,255,255,.1)", border: `3px dashed ${disabled ? "#3a4a6b" : "#f59e0b"}`, cursor: disabled ? "default" : "pointer" }}
-      onMouseEnter={e => { if (!disabled) e.currentTarget.style.background = "rgba(255,255,255,.2)"; }}
-      onMouseLeave={e => { if (!disabled) e.currentTarget.style.background = "rgba(255,255,255,.1)"; }}>
+      style={{ ...FBs, background: disabled ? "#2a3555" : "rgba(255,255,255,.1)", border: `3px dashed ${disabled ? "#3a4a6b" : "#f59e0b"}`, cursor: disabled ? "default" : "pointer" }}>
       <span style={{ fontSize: 28, color: disabled ? "#3a4a6b" : "#f59e0b", fontWeight: 900 }}>?</span>
     </div>
   );
 }
-const FB = { width: "100%", height: 58, borderRadius: 14, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", boxShadow: "0 4px 0 rgba(0,0,0,.4)", transition: "all .15s", userSelect: "none", boxSizing: "border-box" };
+const FBs = { width: "100%", height: 58, borderRadius: 14, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", boxShadow: "0 4px 0 rgba(0,0,0,.4)", transition: "all .15s", userSelect: "none", boxSizing: "border-box" };
 
-/* ─── SPINNER ─── */
 function Spin({ msg }) {
   return (
-    <div style={ROOT}>
-      <style>{CSS}</style>
+    <div style={ROOT}><style>{CSS}</style>
       <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 14 }}>
         <div style={{ width: 52, height: 52, border: "4px solid rgba(255,255,255,.1)", borderTop: "4px solid #f59e0b", borderRadius: "50%", animation: "spin 1s linear infinite" }} />
         <div style={{ color: "rgba(255,255,255,.6)", fontSize: 13, letterSpacing: 2 }}>{msg}</div>
@@ -219,7 +214,8 @@ function Spin({ msg }) {
    MAIN APP
 ════════════════════════════════════════════════════ */
 export default function App() {
-  const [uid, setUid] = useState(null);
+  // Use simple localStorage ID instead of Firebase Auth
+  const [uid] = useState(() => getUserId());
   const [scr, setScr] = useState("lobby");
   const [nm, setNm] = useState("");
   const [wager, setWager] = useState(100);
@@ -246,37 +242,38 @@ export default function App() {
   const L = m => setLog(p => [m, ...p].slice(0, 4));
   const touch = () => { lastAct.current = Date.now(); setItimer(IDLE_SEC); };
 
-  /* ── Auth ── */
+  // Auto-connect Phantom if available
   useEffect(() => {
-    signInAnonymously(auth).then(r => setUid(r.user.uid)).catch(console.error);
-  }, []);
-
-  /* ── Auto-connect Phantom if available ── */
-  useEffect(() => {
-    if (window.solana?.isPhantom && window.solana.publicKey) {
-      setWallet(window.solana.publicKey.toString());
-    }
-  }, []);
-
-  /* ── Listen to game ── */
-  useEffect(() => {
-    if (!roomId) return;
-    rRef.current = ref(db, `games/${roomId}`);
-    const unsub = onValue(rRef.current, snap => {
-      const d = snap.val();
-      if (!d) return;
-      setGs(d);
-      if (d.status === "finished") setScr("result");
-      // Only start timers when BOTH players are in
-      if (d.status === "active" && d.p1 && d.p2 && !started) {
-        setStarted(true);
-        lastAct.current = Date.now();
+    try {
+      if (window.solana?.isPhantom && window.solana.publicKey) {
+        setWallet(window.solana.publicKey.toString());
       }
-    });
-    return () => unsub();
+    } catch { }
+  }, []);
+
+  // Firebase rules need to allow reads/writes without auth
+  // Set database rules to: { "rules": { ".read": true, ".write": true } }
+
+  // Listen to game
+  useEffect(() => {
+    if (!roomId || !db) return;
+    try {
+      rRef.current = ref(db, `games/${roomId}`);
+      const unsub = onValue(rRef.current, snap => {
+        const d = snap.val();
+        if (!d) return;
+        setGs(d);
+        if (d.status === "finished") setScr("result");
+        if (d.status === "active" && d.p1 && d.p2 && !started) {
+          setStarted(true);
+          lastAct.current = Date.now();
+        }
+      });
+      return () => unsub();
+    } catch (e) { console.error(e); }
   }, [roomId, started]);
 
-  /* ── Turn timer (30s) — only runs on my turn, only when game started ── */
+  // Turn timer
   useEffect(() => {
     if (scr !== "game" || !started || !gs) return;
     if (gs.status === "finished" || gs.finalPhase || gs.currentTurn !== myRole) return;
@@ -284,18 +281,14 @@ export default function App() {
     setTtimer(TURN_SEC);
     tRef.current = setInterval(() => {
       setTtimer(t => {
-        if (t <= 1) {
-          clearInterval(tRef.current);
-          autoReveal();
-          return TURN_SEC;
-        }
+        if (t <= 1) { clearInterval(tRef.current); autoReveal(); return TURN_SEC; }
         return t - 1;
       });
     }, 1000);
     return () => clearInterval(tRef.current);
   }, [gs?.currentTurn, gs?.finalPhase, scr, started]);
 
-  /* ── Idle timer (60s) — only in final phase ── */
+  // Idle timer (final phase only)
   useEffect(() => {
     if (!gs?.finalPhase || gs?.status === "finished" || !started) return;
     clearInterval(iRef.current);
@@ -310,7 +303,7 @@ export default function App() {
     return () => clearInterval(iRef.current);
   }, [gs?.finalPhase, gs?.status, gs?.currentTurn, myRole, started]);
 
-  /* ── Detect all fields open → final phase ── */
+  // All fields open → final phase
   useEffect(() => {
     if (!gs || gs.finalPhase || gs.status === "finished" || !gs.board) return;
     const total = gs.board.columns.reduce((s, c) => s + c.fields.length, 0);
@@ -320,23 +313,21 @@ export default function App() {
     }
   }, [gs?.revealed]);
 
-  /* ── Wait for P2 to join ── */
+  // Wait for P2
   useEffect(() => {
-    if (scr !== "waiting" || !roomId) return;
-    const unsub = onValue(ref(db, `games/${roomId}`), snap => {
-      const d = snap.val();
-      if (d?.status === "active" && d.p1 && d.p2) {
-        setGs(d);
-        setStarted(true);
-        lastAct.current = Date.now();
-        setScr("game");
-        L("Opponent joined! Your turn! (You are P1)");
-      }
-    });
-    return () => unsub();
+    if (scr !== "waiting" || !roomId || !db) return;
+    try {
+      const unsub = onValue(ref(db, `games/${roomId}`), snap => {
+        const d = snap.val();
+        if (d?.status === "active" && d.p1 && d.p2) {
+          setGs(d); setStarted(true); lastAct.current = Date.now();
+          setScr("game"); L("Opponent joined! Your turn!");
+        }
+      });
+      return () => unsub();
+    } catch (e) { console.error(e); }
   }, [scr, roomId]);
 
-  /* ── WALLET ── */
   async function doWallet() {
     setWload(true);
     const a = await connectPhantom();
@@ -344,9 +335,8 @@ export default function App() {
     setWload(false);
   }
 
-  /* ── CREATE GAME ── */
   async function doCreate() {
-    if (!nm.trim() || !uid) return;
+    if (!nm.trim() || !uid || !db) return;
     if (!wallet) { alert("Connect Phantom wallet first!"); return; }
     setScr("loading"); setLdmsg("Generating board...");
     const board = await makeBoard();
@@ -355,22 +345,23 @@ export default function App() {
     if (!tx.ok) { alert("Wager failed: " + tx.err); setScr("lobby"); return; }
     setLdmsg("Creating room...");
     const id = genId();
-    await set(ref(db, `games/${id}`), {
-      p1: uid, p1name: nm, p1wallet: wallet,
-      p2: null, p2name: null, p2wallet: null,
-      status: "waiting", wager, board,
-      scores: { p1: 0, p2: 0 }, revealed: {},
-      colSolved: { A: false, B: false, C: false, D: false },
-      finalSolved: false, finalPhase: false, currentTurn: "p1",
-      lastActivity: Date.now(), winner: null, p1tx: tx.id
-    });
-    setRoomId(id); setMyRole("p1"); setStarted(false); setScr("waiting");
+    try {
+      await set(ref(db, `games/${id}`), {
+        p1: uid, p1name: nm, p1wallet: wallet,
+        p2: null, p2name: null, p2wallet: null,
+        status: "waiting", wager, board,
+        scores: { p1: 0, p2: 0 }, revealed: {},
+        colSolved: { A: false, B: false, C: false, D: false },
+        finalSolved: false, finalPhase: false, currentTurn: "p1",
+        lastActivity: Date.now(), winner: null, p1tx: tx.id
+      });
+      setRoomId(id); setMyRole("p1"); setStarted(false); setScr("waiting");
+    } catch (e) { alert("Firebase error: " + e.message); setScr("lobby"); }
   }
 
-  /* ── JOIN GAME ── */
   async function doJoin() {
     const id = jin.trim().toUpperCase();
-    if (!nm.trim() || !uid || id.length < 6) return;
+    if (!nm.trim() || !uid || id.length < 6 || !db) return;
     if (!wallet) { alert("Connect Phantom wallet first!"); return; }
     setJerr(""); setScr("loading"); setLdmsg("Looking for room " + id + "...");
     try {
@@ -392,7 +383,6 @@ export default function App() {
     } catch (e) { setJerr("Error: " + e.message); setScr("lobby"); }
   }
 
-  /* ── OPEN FIELD ── */
   async function doOpen(fid) {
     if (!isMy || didOpen || gs?.finalPhase || !started) return;
     touch(); setDidOpen(true);
@@ -400,7 +390,6 @@ export default function App() {
     L("Field " + fid + " opened!");
   }
 
-  /* ── AUTO REVEAL on timer expire ── */
   async function autoReveal() {
     if (!gs?.board || !rRef.current) return;
     const all = gs.board.columns.flatMap(c => c.fields);
@@ -408,11 +397,9 @@ export default function App() {
     if (!hidden.length) { await update(rRef.current, { finalPhase: true }); return; }
     const pick = hidden[Math.floor(Math.random() * hidden.length)];
     await update(rRef.current, { [`revealed/${pick.id}`]: "clue", lastActivity: Date.now() });
-    L("⏱ " + pick.id + " auto-revealed. Opponent's turn!");
-    await doPass();
+    L("⏱ " + pick.id + " auto-revealed."); await doPass();
   }
 
-  /* ── GUESS COLUMN THEME ── */
   async function doGuessCol(cid, val) {
     touch();
     const col = gs.board.columns.find(c => c.id === cid);
@@ -424,45 +411,29 @@ export default function App() {
       upd[`scores/${myRole}`] = (gs.scores?.[myRole] || 0) + 20;
       upd.lastActivity = Date.now();
       await update(rRef.current, upd);
-      L("✅ Column " + cid + ': "' + col.theme + '" +20pts! Keep guessing!');
-      return true; // correct = keep turn
+      L("✅ Column " + cid + ': "' + col.theme + '" +20pts!');
+      return true;
     }
     L("❌ Wrong theme for " + cid + ". Opponent's turn!");
-    await doPass();
-    return false; // wrong = pass turn
+    await doPass(); return false;
   }
 
-  /* ── GUESS FINAL ── */
   async function doGuessFinal(val) {
     touch();
     if (hit(val, gs.board.final.answer)) {
-      await update(rRef.current, {
-        finalSolved: myRole,
-        [`scores/${myRole}`]: (gs.scores?.[myRole] || 0) + 30,
-        lastActivity: Date.now()
-      });
-      doEnd(myRole, "Final answer correct! +30pts 🎉");
-      return true;
+      await update(rRef.current, { finalSolved: myRole, [`scores/${myRole}`]: (gs.scores?.[myRole] || 0) + 30, lastActivity: Date.now() });
+      doEnd(myRole, "Final answer correct! +30pts 🎉"); return true;
     }
-    L("❌ Wrong final. Opponent's turn!");
-    await doPass();
-    return false;
+    L("❌ Wrong final. Opponent's turn!"); await doPass(); return false;
   }
 
-  /* ── PASS TURN ── */
   async function doPass() {
-    clearInterval(tRef.current);
-    setDidOpen(false);
-    await update(rRef.current, {
-      currentTurn: myRole === "p1" ? "p2" : "p1",
-      lastActivity: Date.now()
-    });
+    clearInterval(tRef.current); setDidOpen(false);
+    await update(rRef.current, { currentTurn: myRole === "p1" ? "p2" : "p1", lastActivity: Date.now() });
   }
 
-  /* ── END GAME ── */
   async function doEnd(w, reason) {
-    clearInterval(tRef.current);
-    clearInterval(iRef.current);
+    clearInterval(tRef.current); clearInterval(iRef.current);
     if (!rRef.current) return;
     await update(rRef.current, { status: "finished", winner: w, winReason: reason, finishedAt: Date.now() });
     if (!gs) return;
@@ -470,15 +441,8 @@ export default function App() {
     for (const r of ["p1", "p2"]) {
       const u = gs[r]; if (!u) continue;
       const lb = ref(db, `leaderboard/${u}`);
-      const sn = await get(lb);
-      const cv = sn.val() || { wins: 0, losses: 0, points: 0, tokensWon: 0 };
-      await set(lb, {
-        name: r === "p1" ? gs.p1name : gs.p2name,
-        wins: (cv.wins || 0) + (w === r ? 1 : 0),
-        losses: (cv.losses || 0) + (w === r ? 0 : 1),
-        points: (cv.points || 0) + (sc[r] || 0),
-        tokensWon: (cv.tokensWon || 0) + (w === r ? wager * 2 : 0)
-      });
+      const sn = await get(lb); const cv = sn.val() || { wins: 0, losses: 0, points: 0, tokensWon: 0 };
+      await set(lb, { name: r === "p1" ? gs.p1name : gs.p2name, wins: (cv.wins || 0) + (w === r ? 1 : 0), losses: (cv.losses || 0) + (w === r ? 0 : 1), points: (cv.points || 0) + (sc[r] || 0), tokensWon: (cv.tokensWon || 0) + (w === r ? wager * 2 : 0) });
     }
   }
 
@@ -487,7 +451,6 @@ export default function App() {
     setDidOpen(false); setLog([]); setJin(""); setJerr(""); setStarted(false);
   }
 
-  /* ── DERIVED STATE ── */
   const board = gs?.board || null;
   const isMy = gs?.currentTurn === myRole;
   const scores = gs?.scores || { p1: 0, p2: 0 };
@@ -499,41 +462,31 @@ export default function App() {
   const winReason = gs?.winReason || "";
   const myNm = myRole === "p1" ? gs?.p1name || "P1" : gs?.p2name || "P2";
   const opNm = myRole === "p1" ? gs?.p2name || "P2" : gs?.p1name || "P1";
-  // Can open: my turn, haven't opened this turn, not final phase, game active
-  const canOpen = isMy && !didOpen && !finalPhase && !winner && gs?.status === "active" && started;
-  // Can guess: my turn, opened a field (or final phase), game active
-  const canGuess = isMy && (didOpen || finalPhase) && !winner && gs?.status === "active" && started;
-  const fst = fid => { const r = revealed[fid]; if (!r) return "hidden"; if (r === "solved") return "solved"; return "clue"; };
   const myScore = myRole === "p1" ? scores.p1 : scores.p2;
   const opScore = myRole === "p1" ? scores.p2 : scores.p1;
+  const canOpen = isMy && !didOpen && !finalPhase && !winner && gs?.status === "active" && started;
+  const canGuess = isMy && (didOpen || finalPhase) && !winner && gs?.status === "active" && started;
+  const fst = fid => { const r = revealed[fid]; if (!r) return "hidden"; if (r === "solved") return "solved"; return "clue"; };
 
-  /* ══════════════════════════════════════════
-     LOBBY
-  ══════════════════════════════════════════ */
+  /* ── LOBBY ── */
   if (scr === "lobby") return (
     <div style={ROOT}><style>{CSS}</style>
-      <div style={{ background: "#0f1a30", padding: "14px 16px", borderBottom: "2px solid #f59e0b", textAlign: "center", flexShrink: 0 }}>
+      <div style={{ background: "#0f1a30", padding: "12px 16px", borderBottom: "2px solid #f59e0b", textAlign: "center", flexShrink: 0 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, marginBottom: 2 }}>
-          <svg width="30" height="30" viewBox="0 0 64 64" fill="none">
+          <svg width="28" height="28" viewBox="0 0 64 64" fill="none">
             <polygon points="32,2 54,16 54,40 32,54 10,40 10,16" fill="none" stroke="#8b5cf6" strokeWidth="2" opacity=".6" />
-            <circle cx="32" cy="26" r="16" fill="#fff" opacity=".93" />
-            <rect x="24" y="38" width="7" height="9" rx="2" fill="#fff" opacity=".93" />
-            <rect x="33" y="38" width="7" height="9" rx="2" fill="#fff" opacity=".93" />
-            <ellipse cx="26" cy="24" rx="4.5" ry="5.5" fill="#111" />
-            <ellipse cx="38" cy="24" rx="4.5" ry="5.5" fill="#111" />
-            <ellipse cx="26" cy="23" rx="1.5" ry="2" fill="#8b5cf6" opacity=".9" />
-            <ellipse cx="38" cy="23" rx="1.5" ry="2" fill="#22c55e" opacity=".9" />
+            <circle cx="32" cy="26" r="16" fill="#fff" opacity=".93" /><rect x="24" y="38" width="7" height="9" rx="2" fill="#fff" opacity=".93" /><rect x="33" y="38" width="7" height="9" rx="2" fill="#fff" opacity=".93" />
+            <ellipse cx="26" cy="24" rx="4.5" ry="5.5" fill="#111" /><ellipse cx="38" cy="24" rx="4.5" ry="5.5" fill="#111" />
+            <ellipse cx="26" cy="23" rx="1.5" ry="2" fill="#8b5cf6" opacity=".9" /><ellipse cx="38" cy="23" rx="1.5" ry="2" fill="#22c55e" opacity=".9" />
             <path d="M28 34 L32 31 L36 34" stroke="#333" strokeWidth="1.5" fill="none" />
           </svg>
-          <div style={{ fontFamily: "'Black Ops One',cursive", fontSize: 24, color: "#22c55e", letterSpacing: 4, textShadow: "0 0 16px #22c55e88" }}>FREEDOM</div>
+          <div style={{ fontFamily: "'Black Ops One',cursive", fontSize: 22, color: "#22c55e", letterSpacing: 4, textShadow: "0 0 16px #22c55e88" }}>FREEDOM</div>
         </div>
         <div style={{ fontFamily: "'Black Ops One',cursive", fontSize: 11, color: "#f59e0b", letterSpacing: 4 }}>ASSOCIATIONS</div>
       </div>
-
-      <div style={{ flex: 1, overflowY: "auto", padding: "14px" }}>
-        {/* Wallet */}
-        <div style={{ background: "rgba(255,255,255,.06)", borderRadius: 12, padding: "12px", marginBottom: 12, border: "1px solid rgba(255,255,255,.1)" }}>
-          <div style={{ fontSize: 9, color: "rgba(255,255,255,.4)", letterSpacing: 2, marginBottom: 8 }}>PHANTOM WALLET</div>
+      <div style={{ flex: 1, overflowY: "auto", padding: "12px 14px" }}>
+        <div style={{ background: "rgba(255,255,255,.06)", borderRadius: 12, padding: "10px", marginBottom: 10, border: "1px solid rgba(255,255,255,.1)" }}>
+          <div style={{ fontSize: 9, color: "rgba(255,255,255,.4)", letterSpacing: 2, marginBottom: 6 }}>PHANTOM WALLET</div>
           {wallet ? (
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#22c55e", boxShadow: "0 0 8px #22c55e" }} />
@@ -541,78 +494,50 @@ export default function App() {
               <span style={{ fontSize: 9, color: "rgba(255,255,255,.3)", marginLeft: "auto" }}>✓ Connected</span>
             </div>
           ) : (
-            <button onClick={doWallet} disabled={wload}
-              style={{ width: "100%", padding: "10px 0", background: "linear-gradient(90deg,#8b5cf6,#7c3aed)", border: "none", borderRadius: 10, color: "#fff", fontFamily: "inherit", fontSize: 12, fontWeight: 700, cursor: "pointer", letterSpacing: 1 }}>
+            <button onClick={doWallet} disabled={wload} style={{ width: "100%", padding: "10px 0", background: "linear-gradient(90deg,#8b5cf6,#7c3aed)", border: "none", borderRadius: 10, color: "#fff", fontFamily: "inherit", fontSize: 12, fontWeight: 700, cursor: "pointer", letterSpacing: 1 }}>
               {wload ? "CONNECTING..." : "🔗 CONNECT PHANTOM WALLET"}
             </button>
           )}
         </div>
-
-        {/* Name */}
         <input value={nm} onChange={e => setNm(e.target.value)} placeholder="Your name / username" maxLength={16}
-          style={{ width: "100%", background: "rgba(255,255,255,.1)", border: "1px solid rgba(255,255,255,.2)", borderRadius: 12, padding: "12px 14px", color: "#fff", fontSize: 14, outline: "none", fontFamily: "inherit", boxSizing: "border-box", marginBottom: 12 }} />
-
-        {/* Wager */}
-        <div style={{ marginBottom: 12 }}>
-          <div style={{ fontSize: 9, color: "rgba(255,255,255,.4)", letterSpacing: 2, marginBottom: 8 }}>WAGER — FREEDOM TOKENS</div>
+          style={{ width: "100%", background: "rgba(255,255,255,.1)", border: "1px solid rgba(255,255,255,.2)", borderRadius: 12, padding: "11px 14px", color: "#fff", fontSize: 14, outline: "none", fontFamily: "inherit", boxSizing: "border-box", marginBottom: 10 }} />
+        <div style={{ marginBottom: 10 }}>
+          <div style={{ fontSize: 9, color: "rgba(255,255,255,.4)", letterSpacing: 2, marginBottom: 6 }}>WAGER — FREEDOM TOKENS</div>
           <div style={{ display: "flex", gap: 8 }}>
-            {WAGERS.map(w => (
-              <button key={w} onClick={() => setWager(w)}
-                style={{ flex: 1, padding: "10px 0", borderRadius: 10, fontFamily: "inherit", fontSize: 14, fontWeight: 700, cursor: "pointer", background: wager === w ? "#f59e0b" : "rgba(255,255,255,.1)", color: wager === w ? "#fff" : "rgba(255,255,255,.7)", border: `2px solid ${wager === w ? "#f59e0b" : "rgba(255,255,255,.2)"}` }}>
-                {w}
-              </button>
-            ))}
+            {WAGERS.map(w => <button key={w} onClick={() => setWager(w)} style={{ flex: 1, padding: "10px 0", borderRadius: 10, fontFamily: "inherit", fontSize: 14, fontWeight: 700, cursor: "pointer", background: wager === w ? "#f59e0b" : "rgba(255,255,255,.1)", color: wager === w ? "#fff" : "rgba(255,255,255,.7)", border: `2px solid ${wager === w ? "#f59e0b" : "rgba(255,255,255,.2)"}` }}>{w}</button>)}
           </div>
         </div>
-
-        {/* Mode tabs */}
-        <div style={{ display: "flex", borderRadius: 12, overflow: "hidden", border: "1px solid rgba(255,255,255,.15)", marginBottom: 12 }}>
+        <div style={{ display: "flex", borderRadius: 12, overflow: "hidden", border: "1px solid rgba(255,255,255,.15)", marginBottom: 10 }}>
           {[["create", "🎮 CREATE"], ["join", "🚪 JOIN"]].map(([m, l]) => (
-            <button key={m} onClick={() => { setMode(m); setJerr(""); }}
-              style={{ flex: 1, padding: "11px 0", fontFamily: "inherit", fontSize: 12, fontWeight: 700, cursor: "pointer", background: mode === m ? "#f59e0b" : "transparent", color: mode === m ? "#fff" : "rgba(255,255,255,.5)", border: "none", letterSpacing: 1 }}>
-              {l}
-            </button>
+            <button key={m} onClick={() => { setMode(m); setJerr(""); }} style={{ flex: 1, padding: "11px 0", fontFamily: "inherit", fontSize: 12, fontWeight: 700, cursor: "pointer", background: mode === m ? "#f59e0b" : "transparent", color: mode === m ? "#fff" : "rgba(255,255,255,.5)", border: "none", letterSpacing: 1 }}>{l}</button>
           ))}
         </div>
-
         {mode === "create" && (
-          <button onClick={doCreate} disabled={!nm.trim() || !uid || !wallet}
-            style={{ width: "100%", padding: "14px 0", background: nm.trim() && wallet ? "linear-gradient(90deg,#f59e0b,#d97706)" : "rgba(255,255,255,.1)", color: nm.trim() && wallet ? "#fff" : "rgba(255,255,255,.3)", border: "none", borderRadius: 12, fontFamily: "inherit", fontSize: 14, fontWeight: 900, cursor: nm.trim() && wallet ? "pointer" : "default", letterSpacing: 2, boxShadow: nm.trim() && wallet ? "0 4px 0 rgba(0,0,0,.3)" : "none" }}>
+          <button onClick={doCreate} disabled={!nm.trim() || !wallet} style={{ width: "100%", padding: "14px 0", background: nm.trim() && wallet ? "linear-gradient(90deg,#f59e0b,#d97706)" : "rgba(255,255,255,.1)", color: nm.trim() && wallet ? "#fff" : "rgba(255,255,255,.3)", border: "none", borderRadius: 12, fontFamily: "inherit", fontSize: 14, fontWeight: 900, cursor: nm.trim() && wallet ? "pointer" : "default", letterSpacing: 2, boxShadow: nm.trim() && wallet ? "0 4px 0 rgba(0,0,0,.3)" : "none" }}>
             🎮 CREATE ROOM
           </button>
         )}
-
         {mode === "join" && (
           <div>
-            <div style={{ fontSize: 9, color: "rgba(255,255,255,.4)", letterSpacing: 2, marginBottom: 8 }}>ENTER ROOM ID (6 characters)</div>
+            <div style={{ fontSize: 9, color: "rgba(255,255,255,.4)", letterSpacing: 2, marginBottom: 6 }}>ENTER ROOM ID</div>
             <input value={jin} onChange={e => { setJin(e.target.value.toUpperCase()); setJerr(""); }} maxLength={6} placeholder="ABC123"
-              style={{ width: "100%", background: "rgba(255,255,255,.1)", border: `2px solid ${jin.length === 6 ? "#22c55e" : "rgba(255,255,255,.2)"}`, borderRadius: 12, padding: "14px", color: "#22c55e", fontSize: 24, outline: "none", fontFamily: "'Black Ops One',cursive", boxSizing: "border-box", textAlign: "center", letterSpacing: 10, marginBottom: 8 }} />
-            {jerr && <div style={{ padding: "8px 10px", background: "rgba(239,68,68,.15)", border: "1px solid rgba(239,68,68,.4)", borderRadius: 8, fontSize: 11, color: "#ef4444", marginBottom: 8 }}>⚠ {jerr}</div>}
-            <button onClick={doJoin} disabled={!nm.trim() || !uid || !wallet || jin.length < 6}
-              style={{ width: "100%", padding: "14px 0", background: jin.length === 6 && nm.trim() && wallet ? "linear-gradient(90deg,#22c55e,#16a34a)" : "rgba(255,255,255,.1)", color: jin.length === 6 && nm.trim() && wallet ? "#fff" : "rgba(255,255,255,.3)", border: "none", borderRadius: 12, fontFamily: "inherit", fontSize: 14, fontWeight: 900, cursor: jin.length === 6 && nm.trim() && wallet ? "pointer" : "default", letterSpacing: 2, boxShadow: jin.length === 6 && wallet ? "0 4px 0 rgba(0,0,0,.3)" : "none" }}>
+              style={{ width: "100%", background: "rgba(255,255,255,.1)", border: `2px solid ${jin.length === 6 ? "#22c55e" : "rgba(255,255,255,.2)"}`, borderRadius: 12, padding: "12px", color: "#22c55e", fontSize: 24, outline: "none", fontFamily: "'Black Ops One',cursive", boxSizing: "border-box", textAlign: "center", letterSpacing: 10, marginBottom: 6 }} />
+            {jerr && <div style={{ padding: "7px 10px", background: "rgba(239,68,68,.15)", border: "1px solid rgba(239,68,68,.4)", borderRadius: 8, fontSize: 11, color: "#ef4444", marginBottom: 6 }}>⚠ {jerr}</div>}
+            <button onClick={doJoin} disabled={!nm.trim() || !wallet || jin.length < 6} style={{ width: "100%", padding: "14px 0", background: jin.length === 6 && nm.trim() && wallet ? "linear-gradient(90deg,#22c55e,#16a34a)" : "rgba(255,255,255,.1)", color: jin.length === 6 && nm.trim() && wallet ? "#fff" : "rgba(255,255,255,.3)", border: "none", borderRadius: 12, fontFamily: "inherit", fontSize: 14, fontWeight: 900, cursor: jin.length === 6 && nm.trim() && wallet ? "pointer" : "default", letterSpacing: 2 }}>
               🚪 JOIN ROOM
             </button>
           </div>
         )}
-
-        {/* Rules */}
-        <div style={{ marginTop: 14, background: "rgba(255,255,255,.05)", borderRadius: 12, padding: "12px", border: "1px solid rgba(255,255,255,.1)" }}>
-          <div style={{ color: "#f59e0b", fontSize: 10, fontWeight: 700, letterSpacing: 2, marginBottom: 8 }}>GAME RULES</div>
-          {[
-            ["30s/turn", "Timer starts when both players join. Open 1 field per turn."],
-            ["Guessing", "Correct = keep your turn. Wrong = opponent's turn immediately."],
-            ["Time up", "30s expire = 1 random field auto-reveals, turn passes."],
-            ["Final phase", "All fields open: 60s idle = opponent wins."],
-            ["Points", "Column theme +20 · Final answer +30"],
-          ].map(([t, d], i) => (
-            <div key={i} style={{ display: "flex", gap: 8, marginBottom: 5 }}>
-              <span style={{ fontSize: 9, color: "#f59e0b", fontWeight: 700, whiteSpace: "nowrap", minWidth: 60 }}>{t}</span>
+        <div style={{ marginTop: 12, background: "rgba(255,255,255,.05)", borderRadius: 12, padding: "10px", border: "1px solid rgba(255,255,255,.1)" }}>
+          <div style={{ color: "#f59e0b", fontSize: 10, fontWeight: 700, letterSpacing: 2, marginBottom: 6 }}>GAME RULES</div>
+          {[["30s/turn", "Open 1 field per turn. Timer starts when both join."], ["Guessing", "Correct = keep turn. Wrong = opponent's turn."], ["Time up", "30s expire = random field auto-reveals, turn passes."], ["Final", "All fields open: 60s idle = opponent wins."], ["Points", "Column theme +20 · Final +30"]].map(([t, d], i) => (
+            <div key={i} style={{ display: "flex", gap: 8, marginBottom: 4 }}>
+              <span style={{ fontSize: 9, color: "#f59e0b", fontWeight: 700, whiteSpace: "nowrap", minWidth: 55 }}>{t}</span>
               <span style={{ fontSize: 10, color: "rgba(255,255,255,.5)", lineHeight: 1.4 }}>{d}</span>
             </div>
           ))}
         </div>
-
-        <div style={{ textAlign: "center", marginTop: 14, paddingBottom: 8 }}>
+        <div style={{ textAlign: "center", marginTop: 12, paddingBottom: 6 }}>
           <span style={{ fontFamily: "'Black Ops One',cursive", fontSize: 11, letterSpacing: 2 }}>
             <span style={{ color: "#8b5cf6" }}>DEGEN</span><span style={{ color: "#22c55e" }}>SAFE</span><span style={{ color: "rgba(255,255,255,.3)" }}>.FUN</span>
           </span>
@@ -623,54 +548,45 @@ export default function App() {
 
   if (scr === "loading") return <Spin msg={ldmsg} />;
 
-  /* ══════════════════════════════════════════
-     WAITING
-  ══════════════════════════════════════════ */
+  /* ── WAITING ── */
   if (scr === "waiting") return (
     <div style={ROOT}><style>{CSS}</style>
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16, padding: 20 }}>
-        <div style={{ width: 60, height: 60, border: "4px solid rgba(255,255,255,.1)", borderTop: "4px solid #22c55e", borderRadius: "50%", animation: "spin 1s linear infinite" }} />
-        <div style={{ fontFamily: "'Black Ops One',cursive", fontSize: 14, color: "#22c55e", letterSpacing: 3 }}>WAITING FOR OPPONENT</div>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 14, padding: 20 }}>
+        <div style={{ width: 56, height: 56, border: "4px solid rgba(255,255,255,.1)", borderTop: "4px solid #22c55e", borderRadius: "50%", animation: "spin 1s linear infinite" }} />
+        <div style={{ fontFamily: "'Black Ops One',cursive", fontSize: 13, color: "#22c55e", letterSpacing: 3 }}>WAITING FOR OPPONENT</div>
         <div style={{ fontSize: 12, color: "rgba(255,255,255,.5)" }}>Wager: <b style={{ color: "#f59e0b" }}>{wager}</b> FREEDOM tokens</div>
         <div style={{ textAlign: "center" }}>
-          <div style={{ fontSize: 12, color: "rgba(255,255,255,.5)", marginBottom: 10 }}>SHARE THIS ROOM ID:</div>
-          <div style={{ fontSize: 44, fontFamily: "'Black Ops One',cursive", color: "#22c55e", letterSpacing: 10, padding: "16px 32px", background: "rgba(34,197,94,.1)", border: "2px solid rgba(34,197,94,.4)", borderRadius: 14, textShadow: "0 0 24px #22c55eaa" }}>{roomId}</div>
-          <div style={{ fontSize: 10, color: "rgba(255,255,255,.3)", marginTop: 10 }}>Opponent opens the app → JOIN ROOM → enters this code</div>
+          <div style={{ fontSize: 12, color: "rgba(255,255,255,.5)", marginBottom: 8 }}>SHARE ROOM ID:</div>
+          <div style={{ fontSize: 42, fontFamily: "'Black Ops One',cursive", color: "#22c55e", letterSpacing: 10, padding: "14px 28px", background: "rgba(34,197,94,.1)", border: "2px solid rgba(34,197,94,.4)", borderRadius: 12 }}>{roomId}</div>
+          <div style={{ fontSize: 10, color: "rgba(255,255,255,.3)", marginTop: 8 }}>Opponent → JOIN ROOM → enter this code</div>
         </div>
-        <button onClick={() => { set(ref(db, `games/${roomId}`), null); setScr("lobby"); setRoomId(null); setMyRole(null); setStarted(false); }}
-          style={{ padding: "12px 24px", background: "rgba(255,255,255,.1)", color: "rgba(255,255,255,.6)", border: "1px solid rgba(255,255,255,.2)", borderRadius: 10, fontFamily: "inherit", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+        <button onClick={() => { try { set(ref(db, `games/${roomId}`), null); } catch { } setScr("lobby"); setRoomId(null); setMyRole(null); setStarted(false); }}
+          style={{ padding: "10px 22px", background: "rgba(255,255,255,.1)", color: "rgba(255,255,255,.6)", border: "1px solid rgba(255,255,255,.2)", borderRadius: 10, fontFamily: "inherit", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
           CANCEL
         </button>
       </div>
     </div>
   );
 
-  /* ══════════════════════════════════════════
-     RESULT
-  ══════════════════════════════════════════ */
+  /* ── RESULT ── */
   if (scr === "result" || winner) return (
     <div style={ROOT}><style>{CSS}</style>
       <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-        <div style={{ width: "100%", maxWidth: 400, background: "#0f1a30", borderRadius: 20, padding: "28px 20px", textAlign: "center", border: "2px solid rgba(255,255,255,.1)" }}>
-          <div style={{ fontSize: 60 }}>{winner === myRole ? "🏆" : "💀"}</div>
-          <div style={{ fontFamily: "'Black Ops One',cursive", fontSize: 26, letterSpacing: 3, marginTop: 8, color: winner === myRole ? "#22c55e" : "#ef4444" }}>
-            {winner === myRole ? "YOU WIN!" : "YOU LOSE"}
-          </div>
-          <div style={{ color: "rgba(255,255,255,.5)", fontSize: 12, marginTop: 6, marginBottom: 20 }}>{winReason}</div>
-          <div style={{ display: "flex", gap: 14, justifyContent: "center", marginBottom: 20 }}>
+        <div style={{ width: "100%", maxWidth: 380, background: "#0f1a30", borderRadius: 20, padding: "24px 18px", textAlign: "center", border: "2px solid rgba(255,255,255,.1)" }}>
+          <div style={{ fontSize: 56 }}>{winner === myRole ? "🏆" : "💀"}</div>
+          <div style={{ fontFamily: "'Black Ops One',cursive", fontSize: 24, letterSpacing: 3, marginTop: 6, color: winner === myRole ? "#22c55e" : "#ef4444" }}>{winner === myRole ? "YOU WIN!" : "YOU LOSE"}</div>
+          <div style={{ color: "rgba(255,255,255,.5)", fontSize: 12, marginTop: 5, marginBottom: 18 }}>{winReason}</div>
+          <div style={{ display: "flex", gap: 12, justifyContent: "center", marginBottom: 18 }}>
             {["p1", "p2"].map(r => (
-              <div key={r} style={{ flex: 1, padding: "14px", borderRadius: 14, background: r === winner ? "rgba(34,197,94,.1)" : "rgba(255,255,255,.05)", border: `2px solid ${r === winner ? "#22c55e" : "rgba(255,255,255,.1)"}` }}>
+              <div key={r} style={{ flex: 1, padding: "12px", borderRadius: 12, background: r === winner ? "rgba(34,197,94,.1)" : "rgba(255,255,255,.05)", border: `2px solid ${r === winner ? "#22c55e" : "rgba(255,255,255,.1)"}` }}>
                 <div style={{ fontSize: 10, color: "rgba(255,255,255,.4)" }}>{r === myRole ? myNm : opNm}</div>
-                <div style={{ fontSize: 32, fontWeight: 900, color: r === winner ? "#22c55e" : "#fff" }}>{r === "p1" ? scores.p1 : scores.p2}</div>
-                <div style={{ fontSize: 10, color: "rgba(255,255,255,.3)" }}>pts</div>
+                <div style={{ fontSize: 30, fontWeight: 900, color: r === winner ? "#22c55e" : "#fff" }}>{r === "p1" ? scores.p1 : scores.p2}</div>
+                <div style={{ fontSize: 9, color: "rgba(255,255,255,.3)" }}>pts</div>
               </div>
             ))}
           </div>
-          {winner === myRole && <div style={{ color: "#f59e0b", fontSize: 13, marginBottom: 16 }}>🎉 Winnings: <b>{wager * 2}</b> FREEDOM tokens</div>}
-          <button onClick={doReset}
-            style={{ width: "100%", padding: "14px", background: "linear-gradient(90deg,#8b5cf6,#7c3aed)", color: "#fff", border: "none", borderRadius: 12, fontFamily: "inherit", fontSize: 14, fontWeight: 900, cursor: "pointer", letterSpacing: 2, boxShadow: "0 4px 0 rgba(0,0,0,.3)" }}>
-            NEW GAME
-          </button>
+          {winner === myRole && <div style={{ color: "#f59e0b", fontSize: 12, marginBottom: 14 }}>🎉 Winnings: <b>{wager * 2}</b> FREEDOM tokens</div>}
+          <button onClick={doReset} style={{ width: "100%", padding: "13px", background: "linear-gradient(90deg,#8b5cf6,#7c3aed)", color: "#fff", border: "none", borderRadius: 12, fontFamily: "inherit", fontSize: 13, fontWeight: 900, cursor: "pointer", letterSpacing: 2, boxShadow: "0 4px 0 rgba(0,0,0,.3)" }}>NEW GAME</button>
         </div>
       </div>
     </div>
@@ -679,160 +595,86 @@ export default function App() {
   if (!board) return <Spin msg="Loading game..." />;
   const [colA, colB, colC, colD] = board.columns;
 
-  /* ══════════════════════════════════════════
-     GAME BOARD — vertical layout
-     
-     SCOREBOARD (top)
-     ─────────────────
-     [A label]  [B label]
-     [A1] [B1]
-     [A2] [B2]
-     [A3] [B3]
-     [A4] [B4]
-     [?A] [?B]   ← theme guesses
-     [  ??? ]    ← final
-     [?C] [?D]   ← theme guesses  
-     [C1] [D1]
-     [C2] [D2]
-     [C3] [D3]
-     [C4] [D4]
-     [C label]  [D label]
-     ─────────────────
-     LOG / PASS
-  ══════════════════════════════════════════ */
+  /* ── GAME ── */
   return (
     <div style={ROOT}><style>{CSS}</style>
-
       {/* SCOREBOARD */}
-      <div style={{ background: "#0f1a30", padding: "8px 12px", borderBottom: "2px solid #f59e0b", flexShrink: 0 }}>
+      <div style={{ background: "#0f1a30", padding: "7px 12px", borderBottom: "2px solid #f59e0b", flexShrink: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          {/* My score */}
           <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 8 }}>
-            <div style={{ width: 38, height: 38, borderRadius: "50%", background: CA, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Black Ops One',cursive", fontSize: 13, color: "#fff", flexShrink: 0, boxShadow: "0 2px 0 rgba(0,0,0,.3)" }}>
-              {myNm.slice(0, 2).toUpperCase()}
-            </div>
+            <div style={{ width: 36, height: 36, borderRadius: "50%", background: CA, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Black Ops One',cursive", fontSize: 12, color: "#fff", flexShrink: 0, boxShadow: "0 2px 0 rgba(0,0,0,.3)" }}>{myNm.slice(0, 2).toUpperCase()}</div>
             <div>
               <div style={{ fontSize: 10, color: "rgba(255,255,255,.5)" }}>{myNm}</div>
-              <div style={{ fontSize: 24, fontWeight: 900, color: "#fff", lineHeight: 1 }}>{myScore}</div>
+              <div style={{ fontSize: 22, fontWeight: 900, color: "#fff", lineHeight: 1 }}>{myScore}</div>
             </div>
           </div>
-
-          {/* Timer circle */}
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, minWidth: 64 }}>
-            <div style={{
-              width: 52, height: 52, borderRadius: "50%", background: "#0a1020",
-              border: `3px solid ${!started ? "#333" : finalPhase ? (isMy ? "#f59e0b" : "#333") : (isMy ? "#22c55e" : "#333")}`,
-              display: "flex", alignItems: "center", justifyContent: "center",
-              boxShadow: isMy && started ? `0 0 14px ${finalPhase ? "#f59e0b44" : "#22c55e44"}` : "none"
-            }}>
-              <span style={{
-                fontFamily: "'Black Ops One',cursive", fontSize: 17, fontWeight: 900,
-                color: !started ? "#333" : finalPhase ? (isMy ? "#f59e0b" : "#333") : (isMy ? "#22c55e" : "#333")
-              }}>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 1, minWidth: 60 }}>
+            <div style={{ width: 48, height: 48, borderRadius: "50%", background: "#0a1020", border: `3px solid ${!started ? "#333" : finalPhase ? (isMy ? "#f59e0b" : "#333") : (isMy ? "#22c55e" : "#333")}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <span style={{ fontFamily: "'Black Ops One',cursive", fontSize: 15, fontWeight: 900, color: !started ? "#333" : finalPhase ? (isMy ? "#f59e0b" : "#333") : (isMy ? "#22c55e" : "#333") }}>
                 {!started ? "⏳" : finalPhase && isMy ? itimer : !finalPhase && isMy ? ttimer : "·"}
               </span>
             </div>
-            <div style={{ fontSize: 8, color: isMy && started ? "#22c55e" : "rgba(255,255,255,.3)", letterSpacing: 1, fontWeight: 700 }}>
+            <div style={{ fontSize: 7, color: isMy && started ? "#22c55e" : "rgba(255,255,255,.3)", letterSpacing: 1, fontWeight: 700 }}>
               {!started ? "WAIT" : finalPhase ? "FINAL" : isMy ? "YOUR TURN" : "WAIT"}
             </div>
           </div>
-
-          {/* Opponent score */}
           <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 8, justifyContent: "flex-end" }}>
             <div style={{ textAlign: "right" }}>
               <div style={{ fontSize: 10, color: "rgba(255,255,255,.5)" }}>{opNm}</div>
-              <div style={{ fontSize: 24, fontWeight: 900, color: "#fff", lineHeight: 1 }}>{opScore}</div>
+              <div style={{ fontSize: 22, fontWeight: 900, color: "#fff", lineHeight: 1 }}>{opScore}</div>
             </div>
-            <div style={{ width: 38, height: 38, borderRadius: "50%", background: CB, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Black Ops One',cursive", fontSize: 13, color: "#fff", flexShrink: 0, boxShadow: "0 2px 0 rgba(0,0,0,.3)" }}>
-              {opNm.slice(0, 2).toUpperCase()}
-            </div>
+            <div style={{ width: 36, height: 36, borderRadius: "50%", background: CB, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Black Ops One',cursive", fontSize: 12, color: "#fff", flexShrink: 0, boxShadow: "0 2px 0 rgba(0,0,0,.3)" }}>{opNm.slice(0, 2).toUpperCase()}</div>
           </div>
         </div>
-
-        {/* Hint */}
-        <div style={{ textAlign: "center", marginTop: 5, fontSize: 11, color: isMy && started ? "#f59e0b" : "rgba(255,255,255,.3)", fontWeight: 700 }}>
-          {!started ? "⏳ Waiting for opponent..."
-            : finalPhase ? (isMy ? "🎯 TAP ? TO GUESS THEMES OR FINAL ANSWER" : "⏳ OPPONENT GUESSING...")
-              : isMy ? (canOpen ? "👆 TAP A FIELD TO REVEAL ITS CLUE" : canGuess ? "💡 TAP ? TO GUESS A THEME OR FINAL ANSWER" : "...")
-                : "⏳ OPPONENT'S TURN"}
+        <div style={{ textAlign: "center", marginTop: 4, fontSize: 10, color: isMy && started ? "#f59e0b" : "rgba(255,255,255,.3)", fontWeight: 700 }}>
+          {!started ? "⏳ Waiting for opponent..." : finalPhase ? (isMy ? "🎯 TAP ? TO GUESS THEMES OR FINAL" : "⏳ OPPONENT GUESSING...") : isMy ? (canOpen ? "👆 TAP A FIELD TO REVEAL ITS CLUE" : canGuess ? "💡 TAP ? TO GUESS A THEME OR FINAL" : "...") : "⏳ OPPONENT'S TURN"}
         </div>
       </div>
 
       {/* BOARD */}
-      <div style={{ flex: 1, overflowY: "auto", padding: "8px 10px" }}>
+      <div style={{ flex: 1, overflowY: "auto", padding: "7px 10px" }}>
         <div style={{ maxWidth: 500, margin: "0 auto", display: "flex", flexDirection: "column", gap: 5 }}>
-
-          {/* AB column labels */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
-            <div style={{ textAlign: "center", paddingBottom: 3, borderBottom: `3px solid ${CA}` }}>
-              <span style={{ fontFamily: "'Black Ops One',cursive", fontSize: 17, color: CA, letterSpacing: 3 }}>A</span>
-            </div>
-            <div style={{ textAlign: "center", paddingBottom: 3, borderBottom: `3px solid ${CB}` }}>
-              <span style={{ fontFamily: "'Black Ops One',cursive", fontSize: 17, color: CB, letterSpacing: 3 }}>B</span>
-            </div>
+            <div style={{ textAlign: "center", paddingBottom: 2, borderBottom: `3px solid ${CA}` }}><span style={{ fontFamily: "'Black Ops One',cursive", fontSize: 16, color: CA, letterSpacing: 3 }}>A</span></div>
+            <div style={{ textAlign: "center", paddingBottom: 2, borderBottom: `3px solid ${CB}` }}><span style={{ fontFamily: "'Black Ops One',cursive", fontSize: 16, color: CB, letterSpacing: 3 }}>B</span></div>
           </div>
-
-          {/* A and B fields */}
           {[0, 1, 2, 3].map(i => (
             <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
               <FieldBtn field={colA.fields[i]} state={fst(colA.fields[i].id)} canOpen={canOpen} color={CA} onOpen={doOpen} />
               <FieldBtn field={colB.fields[i]} state={fst(colB.fields[i].id)} canOpen={canOpen} color={CB} onOpen={doOpen} />
             </div>
           ))}
-
-          {/* Theme A and B */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
             <ThemeBtn colId="A" solved={!!colSolved.A} theme={colA.theme} disabled={!canGuess} onGuess={v => doGuessCol("A", v)} />
             <ThemeBtn colId="B" solved={!!colSolved.B} theme={colB.theme} disabled={!canGuess} onGuess={v => doGuessCol("B", v)} />
           </div>
-
-          {/* FINAL */}
           <FinalBtn solved={!!finalSolved} answer={board.final.answer} disabled={!canGuess} onGuess={doGuessFinal} />
-
-          {/* Theme C and D */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
             <ThemeBtn colId="C" solved={!!colSolved.C} theme={colC.theme} disabled={!canGuess} onGuess={v => doGuessCol("C", v)} />
             <ThemeBtn colId="D" solved={!!colSolved.D} theme={colD.theme} disabled={!canGuess} onGuess={v => doGuessCol("D", v)} />
           </div>
-
-          {/* C and D fields */}
           {[0, 1, 2, 3].map(i => (
             <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
               <FieldBtn field={colC.fields[i]} state={fst(colC.fields[i].id)} canOpen={canOpen} color={CA} onOpen={doOpen} />
               <FieldBtn field={colD.fields[i]} state={fst(colD.fields[i].id)} canOpen={canOpen} color={CB} onOpen={doOpen} />
             </div>
           ))}
-
-          {/* CD column labels */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
-            <div style={{ textAlign: "center", paddingTop: 3, borderTop: `3px solid ${CA}` }}>
-              <span style={{ fontFamily: "'Black Ops One',cursive", fontSize: 17, color: CA, letterSpacing: 3 }}>C</span>
-            </div>
-            <div style={{ textAlign: "center", paddingTop: 3, borderTop: `3px solid ${CB}` }}>
-              <span style={{ fontFamily: "'Black Ops One',cursive", fontSize: 17, color: CB, letterSpacing: 3 }}>D</span>
-            </div>
+            <div style={{ textAlign: "center", paddingTop: 2, borderTop: `3px solid ${CA}` }}><span style={{ fontFamily: "'Black Ops One',cursive", fontSize: 16, color: CA, letterSpacing: 3 }}>C</span></div>
+            <div style={{ textAlign: "center", paddingTop: 2, borderTop: `3px solid ${CB}` }}><span style={{ fontFamily: "'Black Ops One',cursive", fontSize: 16, color: CB, letterSpacing: 3 }}>D</span></div>
           </div>
-
-          {/* PASS + LOG */}
           <div style={{ display: "flex", gap: 8, alignItems: "flex-start", marginTop: 2 }}>
             {isMy && !finalPhase && didOpen && started && (
-              <button onClick={() => { touch(); doPass(); L("Turn passed."); }}
-                style={{ padding: "8px 16px", background: "rgba(255,255,255,.1)", color: "rgba(255,255,255,.6)", border: "1px solid rgba(255,255,255,.2)", borderRadius: 8, fontFamily: "inherit", fontSize: 10, fontWeight: 700, cursor: "pointer", flexShrink: 0 }}>
-                PASS
-              </button>
+              <button onClick={() => { touch(); doPass(); L("Passed."); }} style={{ padding: "8px 14px", background: "rgba(255,255,255,.1)", color: "rgba(255,255,255,.6)", border: "1px solid rgba(255,255,255,.2)", borderRadius: 8, fontFamily: "inherit", fontSize: 10, fontWeight: 700, cursor: "pointer", flexShrink: 0 }}>PASS</button>
             )}
             {log.length > 0 && (
-              <div style={{ flex: 1, padding: "6px 10px", background: "rgba(0,0,0,.3)", borderRadius: 8 }}>
-                {log.map((l, i) => (
-                  <div key={i} style={{ fontSize: 10, color: i === 0 ? "rgba(255,255,255,.8)" : "rgba(255,255,255,.3)", padding: "1px 0" }}>{l}</div>
-                ))}
+              <div style={{ flex: 1, padding: "5px 9px", background: "rgba(0,0,0,.3)", borderRadius: 8 }}>
+                {log.map((l, i) => <div key={i} style={{ fontSize: 10, color: i === 0 ? "rgba(255,255,255,.8)" : "rgba(255,255,255,.3)", padding: "1px 0" }}>{l}</div>)}
               </div>
             )}
           </div>
-
-          {/* Footer */}
-          <div style={{ textAlign: "center", padding: "8px 0 4px" }}>
-            <span style={{ fontFamily: "'Black Ops One',cursive", fontSize: 11, letterSpacing: 2 }}>
+          <div style={{ textAlign: "center", padding: "6px 0 2px" }}>
+            <span style={{ fontFamily: "'Black Ops One',cursive", fontSize: 10, letterSpacing: 2 }}>
               <span style={{ color: "#8b5cf6" }}>DEGEN</span><span style={{ color: "#22c55e" }}>SAFE</span><span style={{ color: "rgba(255,255,255,.3)" }}>.FUN</span>
             </span>
           </div>
@@ -842,9 +684,8 @@ export default function App() {
   );
 }
 
-/* ─── ROOT STYLE — mobile height fix ─── */
 const ROOT = {
-  height: "var(--app-h, 100vh)",
+  height: "100vh",
   display: "flex",
   flexDirection: "column",
   background: "#1a2a4a",
@@ -855,18 +696,10 @@ const ROOT = {
 
 const CSS = `
   @import url('https://fonts.googleapis.com/css2?family=Black+Ops+One&family=Rajdhani:wght@400;600;700&display=swap');
-  html, body { margin: 0; padding: 0; background: #1a2a4a; height: 100%; }
-  @supports not (height: 100dvh) {
-    #root > div { height: 100svh !important; }
-  }
-  @supports not (height: 100svh) {
-    #root > div { height: 100vh !important; }
-  }
+  html, body { margin:0; padding:0; background:#1a2a4a; overflow:hidden; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
   @keyframes pop { from{opacity:0;transform:scale(.85)} to{opacity:1;transform:scale(1)} }
   @keyframes shake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-6px)} 75%{transform:translateX(6px)} }
   @keyframes spin { to{transform:rotate(360deg)} }
-  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-  ::-webkit-scrollbar { width: 4px }
-  ::-webkit-scrollbar-track { background: rgba(0,0,0,.2) }
-  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,.15); border-radius: 2px }
+  ::-webkit-scrollbar{width:3px}::-webkit-scrollbar-track{background:rgba(0,0,0,.2)}::-webkit-scrollbar-thumb{background:rgba(255,255,255,.15);border-radius:2px}
 `;
