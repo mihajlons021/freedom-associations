@@ -844,9 +844,7 @@ export default function App() {
 
 /* ─── ROOT STYLE — mobile height fix ─── */
 const ROOT = {
-  /* Use dvh (dynamic viewport height) which works on mobile browsers.
-     Falls back to svh, then 100vh for older browsers. */
-  height: "100dvh",
+  height: "var(--app-h, 100vh)",
   display: "flex",
   flexDirection: "column",
   background: "#1a2a4a",
