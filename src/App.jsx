@@ -602,19 +602,15 @@ export default function App() {
     return(
       <div style={ROOT}><style>{CSS}</style>
       {SB}
-      {/* Full height flex container — board fills entire remaining height */}
-      <div style={{flex:1,display:"flex",flexDirection:"column",padding:"12px 16px",minHeight:0}}>
-
-        {/* FULL WIDTH GRID — fills all available height with 1fr rows */}
+      <div style={{flex:1,display:"flex",flexDirection:"column",padding:"10px 16px",overflow:"hidden"}}>
         <div style={{
           display:"grid",
           gridTemplateColumns:`${LW}px 1fr ${TW}px ${FW}px ${TW}px 1fr ${LW}px`,
           gridTemplateRows:"1fr 1fr",
           gap:G,
-          flex:1,
-          minHeight:0,
-          marginBottom:10,
+          height:"calc(100vh - 260px)",
           width:"100%",
+          marginBottom:8,
         }}>
           {/* ── ROW 1 ── */}
           {/* A label */}
