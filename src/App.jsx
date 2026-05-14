@@ -342,14 +342,7 @@ export default function App(){
   async function doJoin(){
     const id=jin.trim().toUpperCase();if(!nm.trim()||!myUid||id.length<6)return;if(!wallet){alert("Connect Phantom first!");return;}
     setJerr("");setScr("loading");setLdmsg("Looking for room "+id+"...");
-    try{const sn=await get(ref(db,"games/"+id));if(!sn.exists()){setJerr("Room "+id+" not found!");setScr("lobby");return;}const d=sn.val();if(d.status!=="waiting"){setJerr("Room already started!");setScr("lobby");return;}if(d.p1===myUid){setJerr("Can't join your own room!");setScr("lobby");return;}
-      // Reject stale rooms (old board data) older than 10 minutes
-      if(Date.now()-d.lastActivity>10*60*1000){setJerr("Room expired! Ask opponent to create a new room.");setScr("lobby");return;}
-      // Reject rooms with banned clues from old boards
-      const banned=["black & white stripes","king of jungle","trunk & tusks","italian pie","japanese roll","mexican wrap","french bread"];
-      const allClues=(d.board?.columns||[]).flatMap(c=>c.fields.map(f=>f.clue?.toLowerCase()||""));
-      if(banned.some(b=>allClues.includes(b))){setJerr("Old board detected! Ask P1 to create a new room.");setScr("lobby");return;}
-      const tx=await signW(d.wager);if(!tx.ok){alert("Wager failed: "+tx.err);setScr("lobby");return;}await update(ref(db,"games/"+id),{p2:myUid,p2name:nm,p2wallet:wallet,status:"active",currentTurn:"p1",lastActivity:Date.now(),p2tx:tx.id});setWager(d.wager);setRoomId(id);setMyRole("p2");setStarted(true);lastAct.current=Date.now();setScr("game");L("Joined! P2. P1 goes first.");}
+    try{const sn=await get(ref(db,"games/"+id));if(!sn.exists()){setJerr("Room "+id+" not found!");setScr("lobby");return;}const d=sn.val();if(d.status!=="waiting"){setJerr("Room already started!");setScr("lobby");return;}if(d.p1===myUid){setJerr("Can't join your own room!");setScr("lobby");return;}const tx=await signW(d.wager);if(!tx.ok){alert("Wager failed: "+tx.err);setScr("lobby");return;}await update(ref(db,"games/"+id),{p2:myUid,p2name:nm,p2wallet:wallet,status:"active",currentTurn:"p1",lastActivity:Date.now(),p2tx:tx.id});setWager(d.wager);setRoomId(id);setMyRole("p2");setStarted(true);lastAct.current=Date.now();setScr("game");L("Joined! P2. P1 goes first.");}
     catch(e){setJerr("Error: "+e.message);setScr("lobby");}
   }
 
