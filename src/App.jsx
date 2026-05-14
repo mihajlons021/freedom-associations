@@ -472,8 +472,8 @@ export default function App(){
        Each arm is a flex column with marginLeft/marginRight steps.
     ══════════════════════════════════════════════════════════════ */
 
-    const FW = "26vw";   // field width
-    const STEP = "2vw";  // diagonal step per field
+    const FW = "18vw";   // field width — smaller, more like Slagalica
+    const STEP = "1.5vw";  // diagonal step per field
     const G = 6;
 
     // Field for X layout — uses aspectRatio CSS, no fixed height
@@ -505,7 +505,7 @@ export default function App(){
         <div style={{display:"flex",gap:"2vw",alignItems:"stretch",flex:1,minHeight:0}}>
 
           {/* LEFT ARM: A fields (top→center) + C fields (center→bottom) */}
-          <div style={{flex:"0 0 36vw",display:"flex",flexDirection:"column",justifyContent:"space-between",gap:G}}>
+          <div style={{flex:"0 0 26vw",display:"flex",flexDirection:"column",justifyContent:"space-between",gap:G}}>
             {/* A arm: A1 top-left, A4 near-center (increasing indent) */}
             <div style={{display:"flex",flexDirection:"column",gap:G}}>
               {colA.fields.map((f,i)=>{const{st,sb}=fst(f.id);return(
@@ -539,7 +539,7 @@ export default function App(){
           </div>
 
           {/* RIGHT ARM: B fields (top→center) + D fields (center→bottom) */}
-          <div style={{flex:"0 0 36vw",display:"flex",flexDirection:"column",justifyContent:"space-between",gap:G,alignItems:"flex-end"}}>
+          <div style={{flex:"0 0 26vw",display:"flex",flexDirection:"column",justifyContent:"space-between",gap:G,alignItems:"flex-end"}}>
             {/* B arm: B1 top-right, B4 near-center (increasing right-indent) */}
             <div style={{display:"flex",flexDirection:"column",gap:G,alignItems:"flex-end"}}>
               {colB.fields.map((f,i)=>{const{st,sb}=fst(f.id);return(
