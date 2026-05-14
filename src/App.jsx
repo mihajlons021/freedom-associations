@@ -307,12 +307,20 @@ export default function App(){
   const[didOpen,setDidOpen]=useState(false);
   const[log,setLog]=useState([]);
   const[isDesktop,setIsDesktop]=useState(window.innerWidth>=768);
+  // Desktop: lifted input state — prevents XTh remount from wiping local useState
+  const[dtCol,setDtCol]=useState(null);   // which col input is open: "A"|"B"|"C"|"D"|null
+  const[dtVal,setDtVal]=useState("");      // current input value
+  const[dtErr,setDtErr]=useState(false);  // shake animation flag
 
-  const tR=useRef(),iR=useRef(),lastAct=useRef(Date.now()),rRef=useRef(null);
+  const tR=useRef(),iR=useRef(),lastAct=useRef(Date.now()),rRef=useRef(null),didOpenRef=useRef(false);
   const L=m=>setLog(p=>[m,...p].slice(0,4));
   const touch=()=>{lastAct.current=Date.now();setIt(ISEC);};
 
   useEffect(()=>{const c=()=>setIsDesktop(window.innerWidth>=768);window.addEventListener("resize",c);return()=>window.removeEventListener("resize",c);},[]);
+  // Keep ref in sync so autoRev can read didOpen without stale closure
+  useEffect(()=>{didOpenRef.current=didOpen;},[didOpen]);
+  // Reset desktop input state when turn changes (opponent's turn or after pass)
+  useEffect(()=>{setDtCol(null);setDtVal("");setDtErr(false);},[gs?.currentTurn]);
   useEffect(()=>{try{if(window.solana?.isPhantom&&window.solana.publicKey)setWallet(window.solana.publicKey.toString());}catch{};},[]);
 
   useEffect(()=>{if(!roomId||!db)return;rRef.current=ref(db,"games/"+roomId);const u=onValue(rRef.current,s=>{const d=s.val();if(!d)return;setGs(d);if(d.status==="finished")setScr("result");if(d.status==="active"&&d.p1&&d.p2&&!started){setStarted(true);lastAct.current=Date.now();}});return()=>u();},[roomId,started]);
@@ -347,7 +355,17 @@ export default function App(){
   }
 
   async function doOpen(fid){if(!isMy||didOpen||gs?.finalPhase||!started)return;touch();setDidOpen(true);await update(rRef.current,{["revealed/"+fid]:"clue",lastActivity:Date.now()});L("Field "+fid+" opened!");}
-  async function autoRev(){if(!gs?.board||!rRef.current)return;const all=gs.board.columns.flatMap(c=>c.fields),hidden=all.filter(f=>!gs.revealed?.[f.id]);if(!hidden.length){await update(rRef.current,{finalPhase:true});return;}const pk=hidden[Math.floor(Math.random()*hidden.length)];await update(rRef.current,{["revealed/"+pk.id]:"clue",lastActivity:Date.now()});L("⏱ "+pk.id+" auto-revealed.");await doPass();}
+  async function autoRev(){
+    if(!gs?.board||!rRef.current)return;
+    // If player already opened a field this turn, just pass — don't reveal a second field
+    if(didOpenRef.current){L("⏱ Time up. Passing turn.");await doPass();return;}
+    const all=gs.board.columns.flatMap(c=>c.fields),hidden=all.filter(f=>!gs.revealed?.[f.id]);
+    if(!hidden.length){await update(rRef.current,{finalPhase:true});return;}
+    const pk=hidden[Math.floor(Math.random()*hidden.length)];
+    await update(rRef.current,{["revealed/"+pk.id]:"clue",lastActivity:Date.now()});
+    L("⏱ "+pk.id+" auto-revealed.");
+    await doPass();
+  }
   async function doGuessCol(cid,val){touch();const col=gs.board.columns.find(c=>c.id===cid);if(!col||gs.colSolved?.[cid])return false;if(match(val,col.theme)){const u={};col.fields.forEach(f=>{u["revealed/"+f.id]="solved_"+myRole;});u["colSolved/"+cid]=myRole;u["scores/"+myRole]=(gs.scores?.[myRole]||0)+20;u.lastActivity=Date.now();await update(rRef.current,u);L("✅ "+cid+': "'+col.theme+'" +20pts!');return true;}L("❌ Wrong. Opponent's turn!");await doPass();return false;}
   async function doGuessFinal(val){touch();if(match(val,gs.board.final.answer)){await update(rRef.current,{finalSolved:myRole,["scores/"+myRole]:(gs.scores?.[myRole]||0)+30,lastActivity:Date.now()});doEnd(myRole,"Final correct! +30pts 🎉");return true;}L("❌ Wrong final.");await doPass();return false;}
   async function doPass(){clearInterval(tR.current);setDidOpen(false);await update(rRef.current,{currentTurn:myRole==="p1"?"p2":"p1",lastActivity:Date.now()});}
@@ -501,16 +519,23 @@ export default function App(){
       return <div style={s} onClick={canOpen?()=>doOpen(field.id):undefined} onMouseEnter={e=>{if(canOpen){e.currentTarget.style.background="rgba(0,40,60,0.95)";e.currentTarget.style.boxShadow="0 0 1vw 0.25vw rgba(0,255,255,0.6)";}}} onMouseLeave={e=>{if(canOpen){e.currentTarget.style.background="#2d5a8a";e.currentTarget.style.boxShadow="0 0 0.8vw 0.15vw rgba(0,255,255,0.35)";}}}><span style={{fontSize:"clamp(9px,1vw,16px)",fontWeight:900,color:canOpen?"rgba(0,255,255,0.85)":"#1a2a3a",letterSpacing:1}}>{field.id}</span></div>;
     };
 
-    // Theme input — SAME SIZE as game fields (width FW, aspectRatio AR)
+    // Theme input — uses App-level state (dtCol/dtVal/dtErr) so remounts don't wipe input
     const XTh = ({cid, solved, solvedBy, theme, disabled, onGuess}) => {
-      const [ed,setEd] = useState(false);
-      const [v,setV] = useState("");
-      const [err,setErr] = useState(false);
+      const isActive = dtCol === cid;
       const sc = solvedBy==="p1"?PC1:PC2;
-      const sub = () => { if(!v.trim())return; if(!onGuess(v)){setErr(true);setTimeout(()=>setErr(false),600);}else{setV("");setEd(false);}};
+      const sub = () => {
+        if(!dtVal.trim())return;
+        if(!onGuess(dtVal)){
+          setDtErr(true);
+          setTimeout(()=>setDtErr(false),600);
+        }else{
+          setDtVal("");
+          setDtCol(null);
+        }
+      };
       if(solved) return <div style={{...fieldBase,background:sc,boxShadow:"0 3px 0 rgba(0,0,0,.4)"}}><span style={{fontSize:"clamp(8px,.9vw,13px)",fontWeight:900,color:"#fff",textAlign:"center",padding:"0 4px"}}>✓ {theme}</span></div>;
-      if(!disabled&&ed) return <div style={{...fieldBase,background:"#fff",animation:err?"shake .4s":"none",flexDirection:"row",gap:4,padding:"0 8px"}}><input value={v} onChange={e=>setV(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")sub();if(e.key==="Escape")setEd(false);}} placeholder={"Theme "+cid+"..."} autoFocus style={{flex:1,background:"transparent",border:"none",fontSize:11,fontWeight:700,outline:"none",fontFamily:"inherit",color:"#1a2a4a",minWidth:0}}/><button onClick={sub} style={{background:"#2d5a8a",border:"none",borderRadius:5,padding:"4px 8px",color:"#fff",fontWeight:900,cursor:"pointer",fontSize:10,flexShrink:0}}>OK</button><button onClick={()=>setEd(false)} style={{background:"#ddd",border:"none",borderRadius:5,padding:"4px 5px",color:"#666",cursor:"pointer",fontSize:10}}>✕</button></div>;
-      return <div style={{...fieldBase,background:disabled?"#111c2a":"rgba(0,30,50,.5)",border:"1.5px dashed "+(disabled?"#1a2a3a":"rgba(0,255,255,0.45)"),boxShadow:disabled?"none":"0 0 0.6vw 0.1vw rgba(0,255,255,0.2)",cursor:disabled?"default":"pointer"}} onClick={disabled?undefined:()=>setEd(true)} onMouseEnter={e=>{if(!disabled){e.currentTarget.style.background="rgba(0,50,70,0.7)";e.currentTarget.style.boxShadow="0 0 1vw 0.2vw rgba(0,255,255,0.4)";}}} onMouseLeave={e=>{if(!disabled){e.currentTarget.style.background="rgba(0,30,50,.5)";e.currentTarget.style.boxShadow="0 0 0.6vw 0.1vw rgba(0,255,255,0.2)";}}}>
+      if(!disabled&&isActive) return <div style={{...fieldBase,background:"#fff",animation:dtErr?"shake .4s":"none",flexDirection:"row",gap:4,padding:"0 6px"}}><input value={dtVal} onChange={e=>setDtVal(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")sub();if(e.key==="Escape")setDtCol(null);}} placeholder={"Theme "+cid+"..."} autoFocus style={{flex:1,background:"transparent",border:"none",fontSize:11,fontWeight:700,outline:"none",fontFamily:"inherit",color:"#1a2a4a",minWidth:0}}/><button onClick={sub} style={{background:"#2d5a8a",border:"none",borderRadius:5,padding:"4px 8px",color:"#fff",fontWeight:900,cursor:"pointer",fontSize:10,flexShrink:0}}>OK</button><button onClick={()=>setDtCol(null)} style={{background:"#ddd",border:"none",borderRadius:5,padding:"4px 5px",color:"#666",cursor:"pointer",fontSize:10}}>✕</button></div>;
+      return <div style={{...fieldBase,background:disabled?"#111c2a":"rgba(0,30,50,.5)",border:"1.5px dashed "+(disabled?"#1a2a3a":"rgba(0,255,255,0.45)"),boxShadow:disabled?"none":"0 0 0.6vw 0.1vw rgba(0,255,255,0.2)",cursor:disabled?"default":"pointer"}} onClick={disabled?undefined:()=>setDtCol(cid)} onMouseEnter={e=>{if(!disabled){e.currentTarget.style.background="rgba(0,50,70,0.7)";e.currentTarget.style.boxShadow="0 0 1vw 0.2vw rgba(0,255,255,0.4)";}}} onMouseLeave={e=>{if(!disabled){e.currentTarget.style.background="rgba(0,30,50,.5)";e.currentTarget.style.boxShadow="0 0 0.6vw 0.1vw rgba(0,255,255,0.2)";}}}> 
         <span style={{fontSize:14,color:disabled?"#1a2a3a":"rgba(0,255,255,0.85)",fontWeight:900,marginBottom:2}}>?</span>
         <span style={{fontSize:"clamp(5px,.6vw,8px)",color:disabled?"#1a2a3a":"rgba(0,255,255,0.55)",letterSpacing:1}}>COL {cid}</span>
       </div>;
