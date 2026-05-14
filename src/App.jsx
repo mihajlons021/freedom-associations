@@ -469,22 +469,23 @@ export default function App(){
       All fields (A1-D4 AND theme inputs) = same width FW, same aspect-ratio 4:1
     */
 
-    const FW = "18vw";    // all fields same width
+    const FW = "15vw";    // all fields same width
     const AR = "4/1";     // aspect ratio 4:1 for all
-    const STP = 1.5;      // vw step per field
-    const G = 6;
+    const STP = 1.0;      // vw step per field
+    const G = 3;
 
     // Unified field style — same size for game fields AND theme inputs
     const fieldBase = {
       width: FW,
       aspectRatio: AR,
-      borderRadius: 8,
+      maxHeight: "min(3.8vw, 5.5vh)",
+      borderRadius: 6,
       display: "flex",
       alignItems: "center",
       justifyContent: "center",
       flexDirection: "column",
       gap: 2,
-      padding: "0 10px",
+      padding: "0 0.5vw",
       boxSizing: "border-box",
       flexShrink: 0,
       transition: "all .15s",
@@ -494,10 +495,10 @@ export default function App(){
     // Game field
     const XFld = ({field, st, sb, canOpen}) => {
       const bg = st==="solved"?(sb==="p1"?PC1:PC2):st==="clue"?"#c47d0e":canOpen?"#2d5a8a":"#1e3a5a";
-      const s = {...fieldBase, background:bg, border:st==="clue"?"2px solid #f59e0b":st==="solved"?"none":canOpen?"1px solid #3a6a9a":"1px solid #1a2a3a", boxShadow:canOpen&&st==="hidden"?"0 3px 10px rgba(0,0,0,.6)":st==="solved"?"0 3px 0 rgba(0,0,0,.4)":"none", cursor:canOpen&&st==="hidden"?"pointer":"default"};
+      const s = {...fieldBase, background:bg, border:st==="clue"?"2px solid #f59e0b":st==="solved"?"none":canOpen?"1px solid rgba(0,255,255,0.5)":"1px solid #1a2a3a", boxShadow:canOpen&&st==="hidden"?"0 0 0.8vw 0.15vw rgba(0,255,255,0.35)":st==="solved"?"0 3px 0 rgba(0,0,0,.4)":"none", cursor:canOpen&&st==="hidden"?"pointer":"default"};
       if(st==="solved") return <div style={s} onClick={canOpen?()=>doOpen(field.id):undefined}><div style={{fontSize:"clamp(9px,1.1vw,15px)",fontWeight:900,color:"#fff",textAlign:"center"}}>{field.answer}</div><div style={{fontSize:"clamp(6px,.75vw,10px)",color:"rgba(255,255,255,.75)",textAlign:"center"}}>{field.clue}</div></div>;
       if(st==="clue") return <div style={s}><div style={{fontSize:"clamp(8px,1vw,13px)",color:"#fff",fontWeight:700,textAlign:"center",lineHeight:1.2}}>{field.clue}</div></div>;
-      return <div style={s} onClick={canOpen?()=>doOpen(field.id):undefined} onMouseEnter={e=>{if(canOpen)e.currentTarget.style.background="#3a6e9e";}} onMouseLeave={e=>{if(canOpen)e.currentTarget.style.background="#2d5a8a";}}><span style={{fontSize:"clamp(10px,1.2vw,18px)",fontWeight:900,color:canOpen?"#7ab8e0":"#1a2a3a",letterSpacing:1}}>{field.id}</span></div>;
+      return <div style={s} onClick={canOpen?()=>doOpen(field.id):undefined} onMouseEnter={e=>{if(canOpen){e.currentTarget.style.background="rgba(0,40,60,0.95)";e.currentTarget.style.boxShadow="0 0 1vw 0.25vw rgba(0,255,255,0.6)";}}} onMouseLeave={e=>{if(canOpen){e.currentTarget.style.background="#2d5a8a";e.currentTarget.style.boxShadow="0 0 0.8vw 0.15vw rgba(0,255,255,0.35)";}}}><span style={{fontSize:"clamp(9px,1vw,16px)",fontWeight:900,color:canOpen?"rgba(0,255,255,0.85)":"#1a2a3a",letterSpacing:1}}>{field.id}</span></div>;
     };
 
     // Theme input — SAME SIZE as game fields (width FW, aspectRatio AR)
@@ -509,21 +510,21 @@ export default function App(){
       const sub = () => { if(!v.trim())return; if(!onGuess(v)){setErr(true);setTimeout(()=>setErr(false),600);}else{setV("");setEd(false);}};
       if(solved) return <div style={{...fieldBase,background:sc,boxShadow:"0 3px 0 rgba(0,0,0,.4)"}}><span style={{fontSize:"clamp(8px,.9vw,13px)",fontWeight:900,color:"#fff",textAlign:"center",padding:"0 4px"}}>✓ {theme}</span></div>;
       if(!disabled&&ed) return <div style={{...fieldBase,background:"#fff",animation:err?"shake .4s":"none",flexDirection:"row",gap:4,padding:"0 8px"}}><input value={v} onChange={e=>setV(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")sub();if(e.key==="Escape")setEd(false);}} placeholder={"Theme "+cid+"..."} autoFocus style={{flex:1,background:"transparent",border:"none",fontSize:11,fontWeight:700,outline:"none",fontFamily:"inherit",color:"#1a2a4a",minWidth:0}}/><button onClick={sub} style={{background:"#2d5a8a",border:"none",borderRadius:5,padding:"4px 8px",color:"#fff",fontWeight:900,cursor:"pointer",fontSize:10,flexShrink:0}}>OK</button><button onClick={()=>setEd(false)} style={{background:"#ddd",border:"none",borderRadius:5,padding:"4px 5px",color:"#666",cursor:"pointer",fontSize:10}}>✕</button></div>;
-      return <div style={{...fieldBase,background:disabled?"#111c2a":"rgba(45,90,138,.4)",border:"2px dashed "+(disabled?"#1a2a3a":"#5b9bd5"),cursor:disabled?"default":"pointer"}} onClick={disabled?undefined:()=>setEd(true)} onMouseEnter={e=>{if(!disabled)e.currentTarget.style.background="rgba(45,90,138,.6)";}} onMouseLeave={e=>{if(!disabled)e.currentTarget.style.background="rgba(45,90,138,.4)";}}>
-        <span style={{fontSize:16,color:disabled?"#1a2a3a":"#7ab8e0",fontWeight:900,marginBottom:2}}>?</span>
-        <span style={{fontSize:"clamp(6px,.65vw,9px)",color:disabled?"#1a2a3a":"#5b9bd5",letterSpacing:1}}>COL {cid}</span>
+      return <div style={{...fieldBase,background:disabled?"#111c2a":"rgba(0,30,50,.5)",border:"1.5px dashed "+(disabled?"#1a2a3a":"rgba(0,255,255,0.45)"),boxShadow:disabled?"none":"0 0 0.6vw 0.1vw rgba(0,255,255,0.2)",cursor:disabled?"default":"pointer"}} onClick={disabled?undefined:()=>setEd(true)} onMouseEnter={e=>{if(!disabled){e.currentTarget.style.background="rgba(0,50,70,0.7)";e.currentTarget.style.boxShadow="0 0 1vw 0.2vw rgba(0,255,255,0.4)";}}} onMouseLeave={e=>{if(!disabled){e.currentTarget.style.background="rgba(0,30,50,.5)";e.currentTarget.style.boxShadow="0 0 0.6vw 0.1vw rgba(0,255,255,0.2)";}}}>
+        <span style={{fontSize:14,color:disabled?"#1a2a3a":"rgba(0,255,255,0.85)",fontWeight:900,marginBottom:2}}>?</span>
+        <span style={{fontSize:"clamp(5px,.6vw,8px)",color:disabled?"#1a2a3a":"rgba(0,255,255,0.55)",letterSpacing:1}}>COL {cid}</span>
       </div>;
     };
 
     return(
       <div style={ROOT}><style>{CSS}</style>
       {SB}
-      <div style={{flex:1,padding:"8px 16px 6px",display:"flex",flexDirection:"column",overflow:"hidden"}}>
+      <div style={{flex:1,padding:"4px 12px 4px",display:"flex",flexDirection:"column",overflow:"hidden"}}>
 
-        <div style={{display:"flex",gap:"3vw",alignItems:"center",flex:1,minHeight:0}}>
+        <div style={{display:"flex",gap:"2vw",alignItems:"center",flex:1,minHeight:0}}>
 
           {/* ── LEFT ARM: A column (top) + C column (bottom) ── */}
-          <div style={{flex:"0 0 28vw",display:"flex",flexDirection:"column",justifyContent:"center",gap:G}}>
+          <div style={{flex:"0 0 22vw",display:"flex",flexDirection:"column",justifyContent:"center",gap:G}}>
 
             {/* A1 → A4 → ThemeA (cascade right, ThemeA same indent as A4) */}
             {colA.fields.map((f,i)=>{
@@ -550,12 +551,12 @@ export default function App(){
           </div>
 
           {/* ── CENTER: only FINAL answer ── */}
-          <div style={{flex:"0 0 16vw",display:"flex",alignItems:"center",justifyContent:"center"}}>
-            <FIn solved={!!finalSolved} solvedBy={finalSolved} answer={board.final.answer} disabled={!canGuess} onGuess={doGuessFinal} h={64}/>
+          <div style={{flex:"0 0 12vw",display:"flex",alignItems:"center",justifyContent:"center"}}>
+            <FIn solved={!!finalSolved} solvedBy={finalSolved} answer={board.final.answer} disabled={!canGuess} onGuess={doGuessFinal} h={"min(3.5vw, 5vh)"}/>
           </div>
 
           {/* ── RIGHT ARM: B column (top) + D column (bottom) ── */}
-          <div style={{flex:"0 0 28vw",display:"flex",flexDirection:"column",justifyContent:"center",gap:G,alignItems:"flex-end"}}>
+          <div style={{flex:"0 0 22vw",display:"flex",flexDirection:"column",justifyContent:"center",gap:G,alignItems:"flex-end"}}>
 
             {/* B1 → B4 → ThemeB (cascade left from right, ThemeB same indent as B4) */}
             {colB.fields.map((f,i)=>{
