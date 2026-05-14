@@ -524,16 +524,12 @@ export default function App(){
             </div>
           </div>
 
-          {/* CENTER: Theme inputs + Final box */}
+          {/* CENTER: Theme inputs + Final box as clickable input */}
           <div style={{flex:"0 0 20vw",display:"flex",flexDirection:"column",justifyContent:"center",gap:G*1.5,padding:"0 4px"}}>
             <XTIn cid="A" solved={!!colSolved.A} solvedBy={colSolved.A} theme={colA.theme} disabled={!canGuess} onGuess={v=>doGuessCol("A",v)}/>
             <XTIn cid="B" solved={!!colSolved.B} solvedBy={colSolved.B} theme={colB.theme} disabled={!canGuess} onGuess={v=>doGuessCol("B",v)}/>
-            {/* FINAL BOX in center */}
-            <div style={{background:finalPhase?"rgba(245,158,11,.1)":"#060c1a",border:"2px solid "+(finalPhase?"#f59e0b88":"#1a2a3a"),borderRadius:12,padding:"12px 8px",textAlign:"center",animation:finalPhase?"glowPulse 2s infinite":"none"}}>
-              <div style={{fontSize:7,color:"#2a4060",letterSpacing:2,marginBottom:6}}>FINAL ANSWER</div>
-              {finalSolved?<div style={{fontSize:13,fontWeight:900,color:finalSolved==="p1"?PC1:PC2}}>{board.final.answer}</div>:<div style={{fontSize:22,color:"#1a2a3a",fontWeight:900,fontFamily:"'Black Ops One',cursive"}}>???</div>}
-              <div style={{fontSize:7,color:"#1a2a3a",marginTop:6,fontStyle:"italic"}}>{board.final.hint}</div>
-            </div>
+            {/* FINAL — clickable input directly in center, no separate row below */}
+            <FIn solved={!!finalSolved} solvedBy={finalSolved} answer={board.final.answer} disabled={!canGuess} onGuess={doGuessFinal} h={60}/>
             <XTIn cid="C" solved={!!colSolved.C} solvedBy={colSolved.C} theme={colC.theme} disabled={!canGuess} onGuess={v=>doGuessCol("C",v)}/>
             <XTIn cid="D" solved={!!colSolved.D} solvedBy={colSolved.D} theme={colD.theme} disabled={!canGuess} onGuess={v=>doGuessCol("D",v)}/>
           </div>
@@ -559,11 +555,8 @@ export default function App(){
           </div>
         </div>
 
-        {/* FINAL INPUT + PASS + LOG + STATUS */}
-        <div style={{flexShrink:0,paddingTop:6}}>
-          <div style={{maxWidth:"30vw",margin:"0 auto 6px"}}>
-            <FIn solved={!!finalSolved} solvedBy={finalSolved} answer={board.final.answer} disabled={!canGuess} onGuess={doGuessFinal} h={44}/>
-          </div>
+        {/* PASS + LOG + STATUS — no extra final input here */}
+        <div style={{flexShrink:0,paddingTop:4}}>
           {PL}
           <div style={{textAlign:"center",fontSize:9,color:"rgba(0,255,180,.5)",letterSpacing:1,marginTop:2}}>
             [SYSTEM]: Board #{Math.floor(Date.now()/30000)%B.length} active · Rotates every 30s
