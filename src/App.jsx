@@ -451,111 +451,138 @@ export default function App(){
      the sub-grid itself has height:"100%" within its grid cell.
   ══════════════════════════════════════════════════════════ */
   if(isDesktop){
-    /* ══════════════════════════════════════════════════════════════
-       SLAGALICA X LAYOUT
-       
-       Each field has aspect-ratio 4:1 (width = 4×height).
-       Fields form diagonal "staircase" arms of the X:
-       
-       A1──                      ──B1
-         A2──                ──B2
-           A3──          ──B3
-             A4──      ──B4
-                [ThA][FINAL][ThB]
-                [ThC][     ][ThD]
-             C1──      ──D1
-           C2──          ──D2
-         C3──                ──D3
-       C4──                      ──D4
-       
-       Implementation: 3 flex columns (left arm | center | right arm)
-       Each arm is a flex column with marginLeft/marginRight steps.
-    ══════════════════════════════════════════════════════════════ */
+    /*
+      NEW X LAYOUT:
+      
+      A1──                          ──B1
+        A2──                    ──B2
+          A3──              ──B3
+            A4──          ──B4
+            ThA──        ──ThB      ← theme inputs INSIDE arms, below A4/B4
+                  [FINAL]
+            ThC──        ──ThD      ← theme inputs INSIDE arms, above C1/D1
+            C1──          ──D1
+          C2──              ──D2
+        C3──                    ──D3
+      C4──                          ──D4
+      
+      All fields (A1-D4 AND theme inputs) = same width FW, same aspect-ratio 4:1
+    */
 
-    const FW = "18vw";   // field width — smaller, more like Slagalica
-    const STEP = "1.5vw";  // diagonal step per field
+    const FW = "18vw";    // all fields same width
+    const AR = "4/1";     // aspect ratio 4:1 for all
+    const STP = 1.5;      // vw step per field
     const G = 6;
 
-    // Field for X layout — uses aspectRatio CSS, no fixed height
-    const XFld = ({field,st,sb,canOpen})=>{
-      const bg=st==="solved"?(sb==="p1"?PC1:PC2):st==="clue"?"#c47d0e":canOpen?"#2d5a8a":"#1e3a5a";
-      const s={width:FW,aspectRatio:"4/1",borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:2,padding:"0 10px",boxSizing:"border-box",background:bg,border:st==="clue"?"2px solid #f59e0b":st==="solved"?"none":canOpen?"1px solid #3a6a9a":"1px solid #1a2a3a",boxShadow:canOpen&&st==="hidden"?"0 3px 10px rgba(0,0,0,.6)":st==="solved"?"0 3px 0 rgba(0,0,0,.4)":"none",cursor:canOpen&&st==="hidden"?"pointer":"default",transition:"all .15s",userSelect:"none",flexShrink:0};
-      if(st==="solved")return<div style={s} onClick={canOpen?()=>doOpen(field.id):undefined}><div style={{fontSize:"clamp(10px,1.2vw,16px)",fontWeight:900,color:"#fff",textAlign:"center"}}>{field.answer}</div><div style={{fontSize:"clamp(7px,.8vw,11px)",color:"rgba(255,255,255,.75)",textAlign:"center"}}>{field.clue}</div></div>;
-      if(st==="clue")return<div style={s}><div style={{fontSize:"clamp(9px,1.1vw,14px)",color:"#fff",fontWeight:700,textAlign:"center",lineHeight:1.2}}>{field.clue}</div></div>;
-      return<div style={s} onClick={canOpen?()=>doOpen(field.id):undefined} onMouseEnter={e=>{if(canOpen)e.currentTarget.style.background="#3a6e9e";}} onMouseLeave={e=>{if(canOpen)e.currentTarget.style.background="#2d5a8a";}}><span style={{fontSize:"clamp(11px,1.3vw,19px)",fontWeight:900,color:canOpen?"#7ab8e0":"#1a2a3a",letterSpacing:1}}>{field.id}</span></div>;
+    // Unified field style — same size for game fields AND theme inputs
+    const fieldBase = {
+      width: FW,
+      aspectRatio: AR,
+      borderRadius: 8,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      flexDirection: "column",
+      gap: 2,
+      padding: "0 10px",
+      boxSizing: "border-box",
+      flexShrink: 0,
+      transition: "all .15s",
+      userSelect: "none",
     };
 
-    // Theme button for X center
-    const XTIn=({cid,solved,solvedBy,theme,disabled,onGuess})=>{
-      const[ed,setEd]=useState(false);const[v,setV]=useState("");const[err,setErr]=useState(false);
-      const sc=solvedBy==="p1"?PC1:PC2;
-      const sub=()=>{if(!v.trim())return;if(!onGuess(v)){setErr(true);setTimeout(()=>setErr(false),600);}else{setV("");setEd(false);}};
-      const bs={width:"100%",padding:"8px 10px",borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",userSelect:"none",transition:"all .15s",boxSizing:"border-box"};
-      if(solved)return<div style={{...bs,background:sc,boxShadow:"0 3px 0 rgba(0,0,0,.4)"}}><span style={{fontSize:"clamp(9px,.9vw,13px)",fontWeight:900,color:"#fff",textAlign:"center"}}>✓ {theme}</span></div>;
-      if(!disabled&&ed)return<div style={{...bs,background:"#fff",animation:err?"shake .4s":"none",gap:4}}><input value={v} onChange={e=>setV(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")sub();if(e.key==="Escape")setEd(false);}} placeholder={"Col "+cid} autoFocus style={{flex:1,background:"transparent",border:"none",fontSize:11,fontWeight:700,outline:"none",fontFamily:"inherit",color:"#1a2a4a",minWidth:0}}/><button onClick={sub} style={{background:"#2d5a8a",border:"none",borderRadius:5,padding:"4px 8px",color:"#fff",fontWeight:900,cursor:"pointer",fontSize:10,flexShrink:0}}>OK</button><button onClick={()=>setEd(false)} style={{background:"#ddd",border:"none",borderRadius:5,padding:"4px 5px",color:"#666",cursor:"pointer",fontSize:10}}>✕</button></div>;
-      return<div onClick={disabled?undefined:()=>setEd(true)} style={{...bs,background:disabled?"#111c2a":"rgba(45,90,138,.4)",border:"2px dashed "+(disabled?"#1a2a3a":"#5b9bd5"),cursor:disabled?"default":"pointer"}} onMouseEnter={e=>{if(!disabled)e.currentTarget.style.background="rgba(45,90,138,.6)";}} onMouseLeave={e=>{if(!disabled)e.currentTarget.style.background="rgba(45,90,138,.4)";}}><span style={{fontSize:18,color:disabled?"#1a2a3a":"#7ab8e0",fontWeight:900}}>?</span></div>;
+    // Game field
+    const XFld = ({field, st, sb, canOpen}) => {
+      const bg = st==="solved"?(sb==="p1"?PC1:PC2):st==="clue"?"#c47d0e":canOpen?"#2d5a8a":"#1e3a5a";
+      const s = {...fieldBase, background:bg, border:st==="clue"?"2px solid #f59e0b":st==="solved"?"none":canOpen?"1px solid #3a6a9a":"1px solid #1a2a3a", boxShadow:canOpen&&st==="hidden"?"0 3px 10px rgba(0,0,0,.6)":st==="solved"?"0 3px 0 rgba(0,0,0,.4)":"none", cursor:canOpen&&st==="hidden"?"pointer":"default"};
+      if(st==="solved") return <div style={s} onClick={canOpen?()=>doOpen(field.id):undefined}><div style={{fontSize:"clamp(9px,1.1vw,15px)",fontWeight:900,color:"#fff",textAlign:"center"}}>{field.answer}</div><div style={{fontSize:"clamp(6px,.75vw,10px)",color:"rgba(255,255,255,.75)",textAlign:"center"}}>{field.clue}</div></div>;
+      if(st==="clue") return <div style={s}><div style={{fontSize:"clamp(8px,1vw,13px)",color:"#fff",fontWeight:700,textAlign:"center",lineHeight:1.2}}>{field.clue}</div></div>;
+      return <div style={s} onClick={canOpen?()=>doOpen(field.id):undefined} onMouseEnter={e=>{if(canOpen)e.currentTarget.style.background="#3a6e9e";}} onMouseLeave={e=>{if(canOpen)e.currentTarget.style.background="#2d5a8a";}}><span style={{fontSize:"clamp(10px,1.2vw,18px)",fontWeight:900,color:canOpen?"#7ab8e0":"#1a2a3a",letterSpacing:1}}>{field.id}</span></div>;
+    };
+
+    // Theme input — SAME SIZE as game fields (width FW, aspectRatio AR)
+    const XTh = ({cid, solved, solvedBy, theme, disabled, onGuess}) => {
+      const [ed,setEd] = useState(false);
+      const [v,setV] = useState("");
+      const [err,setErr] = useState(false);
+      const sc = solvedBy==="p1"?PC1:PC2;
+      const sub = () => { if(!v.trim())return; if(!onGuess(v)){setErr(true);setTimeout(()=>setErr(false),600);}else{setV("");setEd(false);}};
+      if(solved) return <div style={{...fieldBase,background:sc,boxShadow:"0 3px 0 rgba(0,0,0,.4)"}}><span style={{fontSize:"clamp(8px,.9vw,13px)",fontWeight:900,color:"#fff",textAlign:"center",padding:"0 4px"}}>✓ {theme}</span></div>;
+      if(!disabled&&ed) return <div style={{...fieldBase,background:"#fff",animation:err?"shake .4s":"none",flexDirection:"row",gap:4,padding:"0 8px"}}><input value={v} onChange={e=>setV(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")sub();if(e.key==="Escape")setEd(false);}} placeholder={"Theme "+cid+"..."} autoFocus style={{flex:1,background:"transparent",border:"none",fontSize:11,fontWeight:700,outline:"none",fontFamily:"inherit",color:"#1a2a4a",minWidth:0}}/><button onClick={sub} style={{background:"#2d5a8a",border:"none",borderRadius:5,padding:"4px 8px",color:"#fff",fontWeight:900,cursor:"pointer",fontSize:10,flexShrink:0}}>OK</button><button onClick={()=>setEd(false)} style={{background:"#ddd",border:"none",borderRadius:5,padding:"4px 5px",color:"#666",cursor:"pointer",fontSize:10}}>✕</button></div>;
+      return <div style={{...fieldBase,background:disabled?"#111c2a":"rgba(45,90,138,.4)",border:"2px dashed "+(disabled?"#1a2a3a":"#5b9bd5"),cursor:disabled?"default":"pointer"}} onClick={disabled?undefined:()=>setEd(true)} onMouseEnter={e=>{if(!disabled)e.currentTarget.style.background="rgba(45,90,138,.6)";}} onMouseLeave={e=>{if(!disabled)e.currentTarget.style.background="rgba(45,90,138,.4)";}}>
+        <span style={{fontSize:16,color:disabled?"#1a2a3a":"#7ab8e0",fontWeight:900,marginBottom:2}}>?</span>
+        <span style={{fontSize:"clamp(6px,.65vw,9px)",color:disabled?"#1a2a3a":"#5b9bd5",letterSpacing:1}}>COL {cid}</span>
+      </div>;
     };
 
     return(
       <div style={ROOT}><style>{CSS}</style>
       {SB}
-      <div style={{flex:1,padding:"8px 20px 6px",display:"flex",flexDirection:"column",justifyContent:"space-between",overflow:"hidden"}}>
+      <div style={{flex:1,padding:"8px 16px 6px",display:"flex",flexDirection:"column",overflow:"hidden"}}>
 
-        {/* ── X BOARD ── */}
-        <div style={{display:"flex",gap:"2vw",alignItems:"stretch",flex:1,minHeight:0}}>
+        <div style={{display:"flex",gap:"3vw",alignItems:"center",flex:1,minHeight:0}}>
 
-          {/* LEFT ARM: A fields (top→center) + C fields (center→bottom) */}
-          <div style={{flex:"0 0 26vw",display:"flex",flexDirection:"column",justifyContent:"space-between",gap:G}}>
-            {/* A arm: A1 top-left, A4 near-center (increasing indent) */}
-            <div style={{display:"flex",flexDirection:"column",gap:G}}>
-              {colA.fields.map((f,i)=>{const{st,sb}=fst(f.id);return(
-                <div key={f.id} style={{marginLeft:`${i*2}vw`}}>
-                  <XFld field={f} st={st} sb={sb} canOpen={canOpen&&st==="hidden"}/>
-                </div>
-              );})}
+          {/* ── LEFT ARM: A column (top) + C column (bottom) ── */}
+          <div style={{flex:"0 0 28vw",display:"flex",flexDirection:"column",justifyContent:"center",gap:G}}>
+
+            {/* A1 → A4 → ThemeA (cascade right, ThemeA same indent as A4) */}
+            {colA.fields.map((f,i)=>{
+              const{st,sb}=fst(f.id);
+              return <div key={f.id} style={{marginLeft:`${i*STP}vw`}}><XFld field={f} st={st} sb={sb} canOpen={canOpen&&st==="hidden"}/></div>;
+            })}
+            {/* ThemeA directly below A4 — same indent as A4 (3 steps) */}
+            <div style={{marginLeft:`${3*STP}vw`}}>
+              <XTh cid="A" solved={!!colSolved.A} solvedBy={colSolved.A} theme={colA.theme} disabled={!canGuess} onGuess={v=>doGuessCol("A",v)}/>
             </div>
-            {/* C arm: C1 near-center (max indent), C4 bottom-left */}
-            <div style={{display:"flex",flexDirection:"column",gap:G}}>
-              {colC.fields.map((f,i)=>{const{st,sb}=fst(f.id);return(
-                <div key={f.id} style={{marginLeft:`${(3-i)*2}vw`}}>
-                  <XFld field={f} st={st} sb={sb} canOpen={canOpen&&st==="hidden"}/>
-                </div>
-              );})}
+
+            {/* Spacer between A and C */}
+            <div style={{height:G*2}}/>
+
+            {/* ThemeC directly above C1 — same indent as C1 (3 steps) */}
+            <div style={{marginLeft:`${3*STP}vw`}}>
+              <XTh cid="C" solved={!!colSolved.C} solvedBy={colSolved.C} theme={colC.theme} disabled={!canGuess} onGuess={v=>doGuessCol("C",v)}/>
             </div>
+            {/* C1(max indent) → C4(no indent) cascade left */}
+            {colC.fields.map((f,i)=>{
+              const{st,sb}=fst(f.id);
+              return <div key={f.id} style={{marginLeft:`${(3-i)*STP}vw`}}><XFld field={f} st={st} sb={sb} canOpen={canOpen&&st==="hidden"}/></div>;
+            })}
           </div>
 
-          {/* CENTER: Theme inputs + Final box as clickable input */}
-          <div style={{flex:"0 0 20vw",display:"flex",flexDirection:"column",justifyContent:"center",gap:G*1.5,padding:"0 4px"}}>
-            <XTIn cid="A" solved={!!colSolved.A} solvedBy={colSolved.A} theme={colA.theme} disabled={!canGuess} onGuess={v=>doGuessCol("A",v)}/>
-            <XTIn cid="B" solved={!!colSolved.B} solvedBy={colSolved.B} theme={colB.theme} disabled={!canGuess} onGuess={v=>doGuessCol("B",v)}/>
-            {/* FINAL — clickable input directly in center, no separate row below */}
-            <FIn solved={!!finalSolved} solvedBy={finalSolved} answer={board.final.answer} disabled={!canGuess} onGuess={doGuessFinal} h={60}/>
-            <XTIn cid="C" solved={!!colSolved.C} solvedBy={colSolved.C} theme={colC.theme} disabled={!canGuess} onGuess={v=>doGuessCol("C",v)}/>
-            <XTIn cid="D" solved={!!colSolved.D} solvedBy={colSolved.D} theme={colD.theme} disabled={!canGuess} onGuess={v=>doGuessCol("D",v)}/>
+          {/* ── CENTER: only FINAL answer ── */}
+          <div style={{flex:"0 0 16vw",display:"flex",alignItems:"center",justifyContent:"center"}}>
+            <FIn solved={!!finalSolved} solvedBy={finalSolved} answer={board.final.answer} disabled={!canGuess} onGuess={doGuessFinal} h={64}/>
           </div>
 
-          {/* RIGHT ARM: B fields (top→center) + D fields (center→bottom) */}
-          <div style={{flex:"0 0 26vw",display:"flex",flexDirection:"column",justifyContent:"space-between",gap:G,alignItems:"flex-end"}}>
-            {/* B arm: B1 top-right, B4 near-center (increasing right-indent) */}
-            <div style={{display:"flex",flexDirection:"column",gap:G,alignItems:"flex-end"}}>
-              {colB.fields.map((f,i)=>{const{st,sb}=fst(f.id);return(
-                <div key={f.id} style={{marginRight:`${i*2}vw`}}>
-                  <XFld field={f} st={st} sb={sb} canOpen={canOpen&&st==="hidden"}/>
-                </div>
-              );})}
+          {/* ── RIGHT ARM: B column (top) + D column (bottom) ── */}
+          <div style={{flex:"0 0 28vw",display:"flex",flexDirection:"column",justifyContent:"center",gap:G,alignItems:"flex-end"}}>
+
+            {/* B1 → B4 → ThemeB (cascade left from right, ThemeB same indent as B4) */}
+            {colB.fields.map((f,i)=>{
+              const{st,sb}=fst(f.id);
+              return <div key={f.id} style={{marginRight:`${i*STP}vw`}}><XFld field={f} st={st} sb={sb} canOpen={canOpen&&st==="hidden"}/></div>;
+            })}
+            {/* ThemeB directly below B4 — same indent as B4 */}
+            <div style={{marginRight:`${3*STP}vw`}}>
+              <XTh cid="B" solved={!!colSolved.B} solvedBy={colSolved.B} theme={colB.theme} disabled={!canGuess} onGuess={v=>doGuessCol("B",v)}/>
             </div>
-            {/* D arm: D1 near-center (max right-indent), D4 bottom-right */}
-            <div style={{display:"flex",flexDirection:"column",gap:G,alignItems:"flex-end"}}>
-              {colD.fields.map((f,i)=>{const{st,sb}=fst(f.id);return(
-                <div key={f.id} style={{marginRight:`${(3-i)*2}vw`}}>
-                  <XFld field={f} st={st} sb={sb} canOpen={canOpen&&st==="hidden"}/>
-                </div>
-              );})}
+
+            {/* Spacer between B and D */}
+            <div style={{height:G*2}}/>
+
+            {/* ThemeD directly above D1 — same indent as D1 */}
+            <div style={{marginRight:`${3*STP}vw`}}>
+              <XTh cid="D" solved={!!colSolved.D} solvedBy={colSolved.D} theme={colD.theme} disabled={!canGuess} onGuess={v=>doGuessCol("D",v)}/>
             </div>
+            {/* D1(max indent) → D4(no indent) cascade right */}
+            {colD.fields.map((f,i)=>{
+              const{st,sb}=fst(f.id);
+              return <div key={f.id} style={{marginRight:`${(3-i)*STP}vw`}}><XFld field={f} st={st} sb={sb} canOpen={canOpen&&st==="hidden"}/></div>;
+            })}
           </div>
         </div>
 
-        {/* PASS + LOG + STATUS — no extra final input here */}
+        {/* LOG + STATUS */}
         <div style={{flexShrink:0,paddingTop:4}}>
           {PL}
           <div style={{textAlign:"center",fontSize:9,color:"rgba(0,255,180,.5)",letterSpacing:1,marginTop:2}}>
