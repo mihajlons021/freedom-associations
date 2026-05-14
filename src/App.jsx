@@ -342,7 +342,14 @@ export default function App(){
   async function doJoin(){
     const id=jin.trim().toUpperCase();if(!nm.trim()||!myUid||id.length<6)return;if(!wallet){alert("Connect Phantom first!");return;}
     setJerr("");setScr("loading");setLdmsg("Looking for room "+id+"...");
-    try{const sn=await get(ref(db,"games/"+id));if(!sn.exists()){setJerr("Room "+id+" not found!");setScr("lobby");return;}const d=sn.val();if(d.status!=="waiting"){setJerr("Room already started!");setScr("lobby");return;}if(d.p1===myUid){setJerr("Can't join your own room!");setScr("lobby");return;}const tx=await signW(d.wager);if(!tx.ok){alert("Wager failed: "+tx.err);setScr("lobby");return;}await update(ref(db,"games/"+id),{p2:myUid,p2name:nm,p2wallet:wallet,status:"active",currentTurn:"p1",lastActivity:Date.now(),p2tx:tx.id});setWager(d.wager);setRoomId(id);setMyRole("p2");setStarted(true);lastAct.current=Date.now();setScr("game");L("Joined! P2. P1 goes first.");}
+    try{const sn=await get(ref(db,"games/"+id));if(!sn.exists()){setJerr("Room "+id+" not found!");setScr("lobby");return;}const d=sn.val();if(d.status!=="waiting"){setJerr("Room already started!");setScr("lobby");return;}if(d.p1===myUid){setJerr("Can't join your own room!");setScr("lobby");return;}
+      // Reject stale rooms (old board data) older than 10 minutes
+      if(Date.now()-d.lastActivity>10*60*1000){setJerr("Room expired! Ask opponent to create a new room.");setScr("lobby");return;}
+      // Reject rooms with banned clues from old boards
+      const banned=["black & white stripes","king of jungle","trunk & tusks","italian pie","japanese roll","mexican wrap","french bread"];
+      const allClues=(d.board?.columns||[]).flatMap(c=>c.fields.map(f=>f.clue?.toLowerCase()||""));
+      if(banned.some(b=>allClues.includes(b))){setJerr("Old board detected! Ask P1 to create a new room.");setScr("lobby");return;}
+      const tx=await signW(d.wager);if(!tx.ok){alert("Wager failed: "+tx.err);setScr("lobby");return;}await update(ref(db,"games/"+id),{p2:myUid,p2name:nm,p2wallet:wallet,status:"active",currentTurn:"p1",lastActivity:Date.now(),p2tx:tx.id});setWager(d.wager);setRoomId(id);setMyRole("p2");setStarted(true);lastAct.current=Date.now();setScr("game");L("Joined! P2. P1 goes first.");}
     catch(e){setJerr("Error: "+e.message);setScr("lobby");}
   }
 
@@ -451,87 +458,125 @@ export default function App(){
      the sub-grid itself has height:"100%" within its grid cell.
   ══════════════════════════════════════════════════════════ */
   if(isDesktop){
-    /* ── EXPLICIT PIXEL HEIGHTS — the only reliable way ── */
-    const G=8;
-    // Calculate row height from actual window size
-    const ROW_H = Math.max(80, Math.floor((window.innerHeight - 240) / 2));
-    const FINAL_H = ROW_H * 2 + G; // final box spans both rows
+    /* ══════════════════════════════════════════════════════════════
+       SLAGALICA X LAYOUT
+       
+       Each field has aspect-ratio 4:1 (width = 4×height).
+       Fields form diagonal "staircase" arms of the X:
+       
+       A1──                      ──B1
+         A2──                ──B2
+           A3──          ──B3
+             A4──      ──B4
+                [ThA][FINAL][ThB]
+                [ThC][     ][ThD]
+             C1──      ──D1
+           C2──          ──D2
+         C3──                ──D3
+       C4──                      ──D4
+       
+       Implementation: 3 flex columns (left arm | center | right arm)
+       Each arm is a flex column with marginLeft/marginRight steps.
+    ══════════════════════════════════════════════════════════════ */
 
-    const lbl=(t,c)=><span style={{fontFamily:"'Black Ops One',cursive",fontSize:26,color:c,textShadow:"0 0 14px "+c+"66"}}>{t}</span>;
-    // Sub-grid: 4 fields with explicit row height
-    const sg=(children)=>(
-      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gridTemplateRows:ROW_H+"px",gap:G}}>
-        {children}
-      </div>
-    );
+    const FW = "26vw";   // field width
+    const STEP = "2vw";  // diagonal step per field
+    const G = 6;
+
+    // Field for X layout — uses aspectRatio CSS, no fixed height
+    const XFld = ({field,st,sb,canOpen})=>{
+      const bg=st==="solved"?(sb==="p1"?PC1:PC2):st==="clue"?"#c47d0e":canOpen?"#2d5a8a":"#1e3a5a";
+      const s={width:FW,aspectRatio:"4/1",borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:2,padding:"0 10px",boxSizing:"border-box",background:bg,border:st==="clue"?"2px solid #f59e0b":st==="solved"?"none":canOpen?"1px solid #3a6a9a":"1px solid #1a2a3a",boxShadow:canOpen&&st==="hidden"?"0 3px 10px rgba(0,0,0,.6)":st==="solved"?"0 3px 0 rgba(0,0,0,.4)":"none",cursor:canOpen&&st==="hidden"?"pointer":"default",transition:"all .15s",userSelect:"none",flexShrink:0};
+      if(st==="solved")return<div style={s} onClick={canOpen?()=>doOpen(field.id):undefined}><div style={{fontSize:"clamp(10px,1.2vw,16px)",fontWeight:900,color:"#fff",textAlign:"center"}}>{field.answer}</div><div style={{fontSize:"clamp(7px,.8vw,11px)",color:"rgba(255,255,255,.75)",textAlign:"center"}}>{field.clue}</div></div>;
+      if(st==="clue")return<div style={s}><div style={{fontSize:"clamp(9px,1.1vw,14px)",color:"#fff",fontWeight:700,textAlign:"center",lineHeight:1.2}}>{field.clue}</div></div>;
+      return<div style={s} onClick={canOpen?()=>doOpen(field.id):undefined} onMouseEnter={e=>{if(canOpen)e.currentTarget.style.background="#3a6e9e";}} onMouseLeave={e=>{if(canOpen)e.currentTarget.style.background="#2d5a8a";}}><span style={{fontSize:"clamp(11px,1.3vw,19px)",fontWeight:900,color:canOpen?"#7ab8e0":"#1a2a3a",letterSpacing:1}}>{field.id}</span></div>;
+    };
+
+    // Theme button for X center
+    const XTIn=({cid,solved,solvedBy,theme,disabled,onGuess})=>{
+      const[ed,setEd]=useState(false);const[v,setV]=useState("");const[err,setErr]=useState(false);
+      const sc=solvedBy==="p1"?PC1:PC2;
+      const sub=()=>{if(!v.trim())return;if(!onGuess(v)){setErr(true);setTimeout(()=>setErr(false),600);}else{setV("");setEd(false);}};
+      const bs={width:"100%",padding:"8px 10px",borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",userSelect:"none",transition:"all .15s",boxSizing:"border-box"};
+      if(solved)return<div style={{...bs,background:sc,boxShadow:"0 3px 0 rgba(0,0,0,.4)"}}><span style={{fontSize:"clamp(9px,.9vw,13px)",fontWeight:900,color:"#fff",textAlign:"center"}}>✓ {theme}</span></div>;
+      if(!disabled&&ed)return<div style={{...bs,background:"#fff",animation:err?"shake .4s":"none",gap:4}}><input value={v} onChange={e=>setV(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")sub();if(e.key==="Escape")setEd(false);}} placeholder={"Col "+cid} autoFocus style={{flex:1,background:"transparent",border:"none",fontSize:11,fontWeight:700,outline:"none",fontFamily:"inherit",color:"#1a2a4a",minWidth:0}}/><button onClick={sub} style={{background:"#2d5a8a",border:"none",borderRadius:5,padding:"4px 8px",color:"#fff",fontWeight:900,cursor:"pointer",fontSize:10,flexShrink:0}}>OK</button><button onClick={()=>setEd(false)} style={{background:"#ddd",border:"none",borderRadius:5,padding:"4px 5px",color:"#666",cursor:"pointer",fontSize:10}}>✕</button></div>;
+      return<div onClick={disabled?undefined:()=>setEd(true)} style={{...bs,background:disabled?"#111c2a":"rgba(45,90,138,.4)",border:"2px dashed "+(disabled?"#1a2a3a":"#5b9bd5"),cursor:disabled?"default":"pointer"}} onMouseEnter={e=>{if(!disabled)e.currentTarget.style.background="rgba(45,90,138,.6)";}} onMouseLeave={e=>{if(!disabled)e.currentTarget.style.background="rgba(45,90,138,.4)";}}><span style={{fontSize:18,color:disabled?"#1a2a3a":"#7ab8e0",fontWeight:900}}>?</span></div>;
+    };
 
     return(
       <div style={ROOT}><style>{CSS}</style>
       {SB}
-      <div style={{flex:1,padding:"10px 14px",display:"flex",flexDirection:"column",gap:6,overflow:"hidden"}}>
+      <div style={{flex:1,padding:"8px 20px 6px",display:"flex",flexDirection:"column",justifyContent:"space-between",overflow:"hidden"}}>
 
-        {/* ROW 1: A ... B (with FINAL spanning both rows via absolute) */}
-        <div style={{position:"relative",display:"flex",gap:G,height:ROW_H,flexShrink:0}}>
-          {/* FINAL BOX — absolute, spans both rows */}
-          <div style={{
-            position:"absolute",
-            left:"calc(50% - 60px)",
-            top:0,
-            width:120,
-            height:FINAL_H,
-            zIndex:5,
-            display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
-            background:finalPhase?"rgba(245,158,11,.1)":"#060c1a",
-            border:"2px solid "+(finalPhase?"#f59e0b88":"#1a2a3a"),
-            borderRadius:14,textAlign:"center",
-            animation:finalPhase?"glowPulse 2s infinite":"none",
-            padding:10,
-          }}>
-            <div style={{fontSize:8,color:"#2a4060",letterSpacing:2,marginBottom:8}}>FINAL</div>
-            {finalSolved?<div style={{fontSize:13,fontWeight:900,color:finalSolved==="p1"?PC1:PC2}}>{board.final.answer}</div>:<div style={{fontSize:26,color:"#1a2a3a",fontWeight:900,fontFamily:"'Black Ops One',cursive"}}>???</div>}
-            <div style={{fontSize:8,color:"#1a2a3a",marginTop:8,fontStyle:"italic"}}>{board.final.hint}</div>
+        {/* ── X BOARD ── */}
+        <div style={{display:"flex",gap:"2vw",alignItems:"stretch",flex:1,minHeight:0}}>
+
+          {/* LEFT ARM: A fields (top→center) + C fields (center→bottom) */}
+          <div style={{flex:"0 0 36vw",display:"flex",flexDirection:"column",justifyContent:"space-between",gap:G}}>
+            {/* A arm: A1 top-left, A4 near-center (increasing indent) */}
+            <div style={{display:"flex",flexDirection:"column",gap:G}}>
+              {colA.fields.map((f,i)=>{const{st,sb}=fst(f.id);return(
+                <div key={f.id} style={{marginLeft:`${i*2}vw`}}>
+                  <XFld field={f} st={st} sb={sb} canOpen={canOpen&&st==="hidden"}/>
+                </div>
+              );})}
+            </div>
+            {/* C arm: C1 near-center (max indent), C4 bottom-left */}
+            <div style={{display:"flex",flexDirection:"column",gap:G}}>
+              {colC.fields.map((f,i)=>{const{st,sb}=fst(f.id);return(
+                <div key={f.id} style={{marginLeft:`${(3-i)*2}vw`}}>
+                  <XFld field={f} st={st} sb={sb} canOpen={canOpen&&st==="hidden"}/>
+                </div>
+              );})}
+            </div>
           </div>
 
-          {/* A label */}
-          <div style={{width:28,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{lbl("A",PC1)}</div>
-          {/* A fields */}
-          <div style={{flex:1}}>{sg([...colA.fields].reverse().map(f=>{const{st,sb}=fst(f.id);return<Fld key={f.id} field={f} st={st} solvedBy={sb} canOpen={canOpen&&st==="hidden"} onOpen={doOpen} h={ROW_H}/>;}) )}</div>
-          {/* Theme A */}
-          <div style={{width:110,flexShrink:0}}><TIn cid="A" solved={!!colSolved.A} solvedBy={colSolved.A} theme={colA.theme} disabled={!canGuess} onGuess={v=>doGuessCol("A",v)} h={ROW_H}/></div>
-          {/* Spacer for FINAL */}
-          <div style={{width:130,flexShrink:0}}/>
-          {/* Theme B */}
-          <div style={{width:110,flexShrink:0}}><TIn cid="B" solved={!!colSolved.B} solvedBy={colSolved.B} theme={colB.theme} disabled={!canGuess} onGuess={v=>doGuessCol("B",v)} h={ROW_H}/></div>
-          {/* B fields */}
-          <div style={{flex:1}}>{sg(colB.fields.map(f=>{const{st,sb}=fst(f.id);return<Fld key={f.id} field={f} st={st} solvedBy={sb} canOpen={canOpen&&st==="hidden"} onOpen={doOpen} h={ROW_H}/>;}) )}</div>
-          {/* B label */}
-          <div style={{width:28,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{lbl("B",PC2)}</div>
+          {/* CENTER: Theme inputs + Final box */}
+          <div style={{flex:"0 0 20vw",display:"flex",flexDirection:"column",justifyContent:"center",gap:G*1.5,padding:"0 4px"}}>
+            <XTIn cid="A" solved={!!colSolved.A} solvedBy={colSolved.A} theme={colA.theme} disabled={!canGuess} onGuess={v=>doGuessCol("A",v)}/>
+            <XTIn cid="B" solved={!!colSolved.B} solvedBy={colSolved.B} theme={colB.theme} disabled={!canGuess} onGuess={v=>doGuessCol("B",v)}/>
+            {/* FINAL BOX in center */}
+            <div style={{background:finalPhase?"rgba(245,158,11,.1)":"#060c1a",border:"2px solid "+(finalPhase?"#f59e0b88":"#1a2a3a"),borderRadius:12,padding:"12px 8px",textAlign:"center",animation:finalPhase?"glowPulse 2s infinite":"none"}}>
+              <div style={{fontSize:7,color:"#2a4060",letterSpacing:2,marginBottom:6}}>FINAL ANSWER</div>
+              {finalSolved?<div style={{fontSize:13,fontWeight:900,color:finalSolved==="p1"?PC1:PC2}}>{board.final.answer}</div>:<div style={{fontSize:22,color:"#1a2a3a",fontWeight:900,fontFamily:"'Black Ops One',cursive"}}>???</div>}
+              <div style={{fontSize:7,color:"#1a2a3a",marginTop:6,fontStyle:"italic"}}>{board.final.hint}</div>
+            </div>
+            <XTIn cid="C" solved={!!colSolved.C} solvedBy={colSolved.C} theme={colC.theme} disabled={!canGuess} onGuess={v=>doGuessCol("C",v)}/>
+            <XTIn cid="D" solved={!!colSolved.D} solvedBy={colSolved.D} theme={colD.theme} disabled={!canGuess} onGuess={v=>doGuessCol("D",v)}/>
+          </div>
+
+          {/* RIGHT ARM: B fields (top→center) + D fields (center→bottom) */}
+          <div style={{flex:"0 0 36vw",display:"flex",flexDirection:"column",justifyContent:"space-between",gap:G,alignItems:"flex-end"}}>
+            {/* B arm: B1 top-right, B4 near-center (increasing right-indent) */}
+            <div style={{display:"flex",flexDirection:"column",gap:G,alignItems:"flex-end"}}>
+              {colB.fields.map((f,i)=>{const{st,sb}=fst(f.id);return(
+                <div key={f.id} style={{marginRight:`${i*2}vw`}}>
+                  <XFld field={f} st={st} sb={sb} canOpen={canOpen&&st==="hidden"}/>
+                </div>
+              );})}
+            </div>
+            {/* D arm: D1 near-center (max right-indent), D4 bottom-right */}
+            <div style={{display:"flex",flexDirection:"column",gap:G,alignItems:"flex-end"}}>
+              {colD.fields.map((f,i)=>{const{st,sb}=fst(f.id);return(
+                <div key={f.id} style={{marginRight:`${(3-i)*2}vw`}}>
+                  <XFld field={f} st={st} sb={sb} canOpen={canOpen&&st==="hidden"}/>
+                </div>
+              );})}
+            </div>
+          </div>
         </div>
 
-        {/* ROW 2: C ... D */}
-        <div style={{display:"flex",gap:G,height:ROW_H,flexShrink:0}}>
-          {/* C label */}
-          <div style={{width:28,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{lbl("C",PC1)}</div>
-          {/* C fields */}
-          <div style={{flex:1}}>{sg([...colC.fields].reverse().map(f=>{const{st,sb}=fst(f.id);return<Fld key={f.id} field={f} st={st} solvedBy={sb} canOpen={canOpen&&st==="hidden"} onOpen={doOpen} h={ROW_H}/>;}) )}</div>
-          {/* Theme C */}
-          <div style={{width:110,flexShrink:0}}><TIn cid="C" solved={!!colSolved.C} solvedBy={colSolved.C} theme={colC.theme} disabled={!canGuess} onGuess={v=>doGuessCol("C",v)} h={ROW_H}/></div>
-          {/* Spacer for FINAL */}
-          <div style={{width:130,flexShrink:0}}/>
-          {/* Theme D */}
-          <div style={{width:110,flexShrink:0}}><TIn cid="D" solved={!!colSolved.D} solvedBy={colSolved.D} theme={colD.theme} disabled={!canGuess} onGuess={v=>doGuessCol("D",v)} h={ROW_H}/></div>
-          {/* D fields */}
-          <div style={{flex:1}}>{sg(colD.fields.map(f=>{const{st,sb}=fst(f.id);return<Fld key={f.id} field={f} st={st} solvedBy={sb} canOpen={canOpen&&st==="hidden"} onOpen={doOpen} h={ROW_H}/>;}) )}</div>
-          {/* D label */}
-          <div style={{width:28,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{lbl("D",PC2)}</div>
+        {/* FINAL INPUT + PASS + LOG + STATUS */}
+        <div style={{flexShrink:0,paddingTop:6}}>
+          <div style={{maxWidth:"30vw",margin:"0 auto 6px"}}>
+            <FIn solved={!!finalSolved} solvedBy={finalSolved} answer={board.final.answer} disabled={!canGuess} onGuess={doGuessFinal} h={44}/>
+          </div>
+          {PL}
+          <div style={{textAlign:"center",fontSize:9,color:"rgba(0,255,180,.5)",letterSpacing:1,marginTop:2}}>
+            [SYSTEM]: Board #{Math.floor(Date.now()/30000)%B.length} active · Rotates every 30s
+          </div>
+          <div style={{textAlign:"center",marginTop:2}}><span style={{fontFamily:"'Black Ops One',cursive",fontSize:9,letterSpacing:2}}><span style={{color:"#8b5cf6"}}>DEGEN</span><span style={{color:"#22c55e"}}>SAFE</span><span style={{color:"rgba(255,255,255,.3)"}}>.FUN</span></span></div>
         </div>
-
-        {/* FINAL INPUT */}
-        <div style={{maxWidth:500,margin:"0 auto",width:"100%",flexShrink:0}}>
-          <FIn solved={!!finalSolved} solvedBy={finalSolved} answer={board.final.answer} disabled={!canGuess} onGuess={doGuessFinal} h={48}/>
-        </div>
-        {PL}
-        <div style={{textAlign:"center"}}><span style={{fontFamily:"'Black Ops One',cursive",fontSize:9,letterSpacing:2}}><span style={{color:"#8b5cf6"}}>DEGEN</span><span style={{color:"#22c55e"}}>SAFE</span><span style={{color:"rgba(255,255,255,.3)"}}>.FUN</span></span></div>
       </div>
       </div>
     );
