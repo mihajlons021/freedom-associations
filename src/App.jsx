@@ -1,4 +1,6 @@
 /* eslint-disable */
+import { Buffer } from "buffer";
+window.Buffer = window.Buffer || Buffer;
 import { useState, useEffect, useRef } from "react";
 import { initializeApp } from "firebase/app";
 import { getDatabase, ref, set, get, update, onValue } from "firebase/database";
