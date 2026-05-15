@@ -325,11 +325,11 @@ export default function App(){
 
   useEffect(()=>{if(!roomId||!db)return;rRef.current=ref(db,"games/"+roomId);const u=onValue(rRef.current,s=>{const d=s.val();if(!d)return;setGs(d);if(d.status==="finished")setScr("result");if(d.status==="active"&&d.p1&&d.p2&&!started){setStarted(true);lastAct.current=Date.now();}});return()=>u();},[roomId,started]);
 
-  useEffect(()=>{if(scr!=="game"||!started||!gs)return;if(gs.status==="finished"||gs.finalPhase||gs.currentTurn!==myRole)return;clearInterval(tR.current);setTt(TSEC);tR.current=setInterval(()=>setTt(t=>{if(t<=1){clearInterval(tR.current);autoRev();return TSEC;}return t-1;}),1000);return()=>clearInterval(tR.current);},[gs?.currentTurn,gs?.finalPhase,scr,started]);
+  useEffect(()=>{if(scr!=="game"||!started||!gs)return;if(gs.status==="finished"||gs.currentTurn!==myRole)return;clearInterval(tR.current);setTt(TSEC);tR.current=setInterval(()=>setTt(t=>{if(t<=1){clearInterval(tR.current);autoRev();return TSEC;}return t-1;}),1000);return()=>clearInterval(tR.current);},[gs?.currentTurn,gs?.finalPhase,scr,started]);
 
-  useEffect(()=>{if(!gs?.finalPhase||gs?.status==="finished"||!started)return;clearInterval(iR.current);iR.current=setInterval(()=>{const rem=ISEC-Math.floor((Date.now()-lastAct.current)/1000);setIt(Math.max(0,rem));if(rem<=0){clearInterval(iR.current);const p1=gs.scores?.p1||0,p2=gs.scores?.p2||0;doEnd(p1>=p2?"p1":"p2","Time up! Winner by points");}},1000);return()=>clearInterval(iR.current);},[gs?.finalPhase,gs?.status,started]);
+  // finalPhase: NO more idle timer — attempts-based ending handled in doGuessCol/doGuessFinal
 
-  useEffect(()=>{if(!gs||gs.finalPhase||gs.status==="finished"||!gs.board)return;if(Object.keys(gs.revealed||{}).length>=gs.board.columns.reduce((s,c)=>s+c.fields.length,0)){update(rRef.current,{finalPhase:true});L("🎯 All fields open!");}},[gs?.revealed]);
+  useEffect(()=>{if(!gs||gs.finalPhase||gs.status==="finished"||!gs.board)return;if(Object.keys(gs.revealed||{}).length>=gs.board.columns.reduce((s,c)=>s+c.fields.length,0)){update(rRef.current,{finalPhase:true,finalAttempts:3});L("🎯 All fields open! 3 attempts left!");}},[gs?.revealed]);
 
   useEffect(()=>{if(scr!=="waiting"||!roomId||!db)return;const u=onValue(ref(db,"games/"+roomId),s=>{const d=s.val();if(d?.status==="active"&&d.p1&&d.p2){setGs(d);setStarted(true);lastAct.current=Date.now();setScr("game");L("Opponent joined! Your turn!");}});return()=>u();},[scr,roomId]);
 
@@ -357,20 +357,94 @@ export default function App(){
   async function doOpen(fid){if(!isMy||didOpen||gs?.finalPhase||!started)return;touch();setDidOpen(true);await update(rRef.current,{["revealed/"+fid]:"clue",lastActivity:Date.now()});L("Field "+fid+" opened!");}
   async function autoRev(){
     if(!gs?.board||!rRef.current)return;
+    // In finalPhase — all fields already open, just pass turn
+    if(gs?.finalPhase){L("⏱ Time up. Passing turn.");await doPass();return;}
     // If player already opened a field this turn, just pass — don't reveal a second field
     if(didOpenRef.current){L("⏱ Time up. Passing turn.");await doPass();return;}
     const all=gs.board.columns.flatMap(c=>c.fields),hidden=all.filter(f=>!gs.revealed?.[f.id]);
-    if(!hidden.length){await update(rRef.current,{finalPhase:true});return;}
+    if(!hidden.length){await update(rRef.current,{finalPhase:true,finalAttempts:3});return;}
     const pk=hidden[Math.floor(Math.random()*hidden.length)];
     await update(rRef.current,{["revealed/"+pk.id]:"clue",lastActivity:Date.now()});
     L("⏱ "+pk.id+" auto-revealed.");
     await doPass();
   }
-  async function doGuessCol(cid,val){touch();const col=gs.board.columns.find(c=>c.id===cid);if(!col||gs.colSolved?.[cid])return false;if(match(val,col.theme)){const u={};col.fields.forEach(f=>{u["revealed/"+f.id]="solved_"+myRole;});u["colSolved/"+cid]=myRole;u["scores/"+myRole]=(gs.scores?.[myRole]||0)+20;u.lastActivity=Date.now();await update(rRef.current,u);L("✅ "+cid+': "'+col.theme+'" +20pts!');return true;}L("❌ Wrong. Opponent's turn!");await doPass();return false;}
-  async function doGuessFinal(val){touch();if(match(val,gs.board.final.answer)){await update(rRef.current,{finalSolved:myRole,["scores/"+myRole]:(gs.scores?.[myRole]||0)+30,lastActivity:Date.now()});doEnd(myRole,"Final correct! +30pts 🎉");return true;}L("❌ Wrong final.");await doPass();return false;}
+  async function doGuessCol(cid,val){
+    touch();
+    const col=gs.board.columns.find(c=>c.id===cid);
+    if(!col||gs.colSolved?.[cid])return false;
+    if(match(val,col.theme)){
+      const u={};
+      col.fields.forEach(f=>{u["revealed/"+f.id]="solved_"+myRole;});
+      u["colSolved/"+cid]=myRole;
+      u["scores/"+myRole]=(gs.scores?.[myRole]||0)+20;
+      u.lastActivity=Date.now();
+      await update(rRef.current,u);
+      L("✅ "+cid+': "'+col.theme+'" +20pts!');
+      return true;
+    }
+    // Wrong guess
+    if(gs?.finalPhase){
+      const rem=(gs.finalAttempts||1)-1;
+      if(rem<=0){
+        L("❌ No attempts left! Game over.");
+        const p1=gs.scores?.p1||0,p2=gs.scores?.p2||0;
+        if(p1===p2){await doEnd("draw","No attempts left — it's a draw!");} 
+        else{await doEnd(p1>p2?"p1":"p2","No attempts left! Winner by points.");}
+        return false;
+      }
+      await update(rRef.current,{finalAttempts:rem,lastActivity:Date.now()});
+      L("❌ Wrong! "+rem+" attempt"+(rem===1?"":"s")+" left.");
+    } else {
+      L("❌ Wrong. Opponent's turn!");
+    }
+    await doPass();
+    return false;
+  }
+  async function doGuessFinal(val){
+    touch();
+    if(match(val,gs.board.final.answer)){
+      await update(rRef.current,{finalSolved:myRole,["scores/"+myRole]:(gs.scores?.[myRole]||0)+30,lastActivity:Date.now()});
+      doEnd(myRole,"Final correct! +30pts 🎉");
+      return true;
+    }
+    // Wrong guess
+    if(gs?.finalPhase){
+      const rem=(gs.finalAttempts||1)-1;
+      if(rem<=0){
+        L("❌ No attempts left! Game over.");
+        const p1=gs.scores?.p1||0,p2=gs.scores?.p2||0;
+        if(p1===p2){await doEnd("draw","No attempts left — it's a draw!");}
+        else{await doEnd(p1>p2?"p1":"p2","No attempts left! Winner by points.");}
+        return false;
+      }
+      await update(rRef.current,{finalAttempts:rem,lastActivity:Date.now()});
+      L("❌ Wrong final! "+rem+" attempt"+(rem===1?"":"s")+" left.");
+    } else {
+      L("❌ Wrong final.");
+    }
+    await doPass();
+    return false;
+  }
   async function doPass(){clearInterval(tR.current);setDidOpen(false);await update(rRef.current,{currentTurn:myRole==="p1"?"p2":"p1",lastActivity:Date.now()});}
-  async function doEnd(w,reason){clearInterval(tR.current);clearInterval(iR.current);if(!rRef.current)return;await update(rRef.current,{status:"finished",winner:w,winReason:reason,finishedAt:Date.now()});if(!gs)return;const sc=gs.scores||{p1:0,p2:0};for(const r of["p1","p2"]){const u=gs[r];if(!u)continue;const lb=ref(db,"leaderboard/"+u);const sn=await get(lb);const cv=sn.val()||{wins:0,losses:0,points:0};await set(lb,{name:r==="p1"?gs.p1name:gs.p2name,wins:(cv.wins||0)+(w===r?1:0),losses:(cv.losses||0)+(w===r?0:1),points:(cv.points||0)+(sc[r]||0)});}}
-  function doReset(){setScr("lobby");setRoomId(null);setMyRole(null);setGs(null);setDidOpen(false);setLog([]);setJin("");setJerr("");setStarted(false);}
+  async function doEnd(w,reason){
+    clearInterval(tR.current);clearInterval(iR.current);
+    if(!rRef.current)return;
+    await update(rRef.current,{status:"finished",winner:w,winReason:reason,finishedAt:Date.now()});
+    if(!gs)return;
+    const sc=gs.scores||{p1:0,p2:0};
+    for(const r of["p1","p2"]){
+      const u=gs[r];if(!u)continue;
+      const lb=ref(db,"leaderboard/"+u);
+      const sn=await get(lb);const cv=sn.val()||{wins:0,losses:0,draws:0,points:0};
+      await set(lb,{
+        name:r==="p1"?gs.p1name:gs.p2name,
+        wins:(cv.wins||0)+(w===r?1:0),
+        losses:(cv.losses||0)+(w!==r&&w!=="draw"?1:0),
+        draws:(cv.draws||0)+(w==="draw"?1:0),
+        points:(cv.points||0)+(sc[r]||0)
+      });
+    }
+  }  function doReset(){setScr("lobby");setRoomId(null);setMyRole(null);setGs(null);setDidOpen(false);setLog([]);setJin("");setJerr("");setStarted(false);}
 
   const board=gs?.board||null,isMy=gs?.currentTurn===myRole;
   const scores=gs?.scores||{p1:0,p2:0},revealed=gs?.revealed||{},colSolved=gs?.colSolved||{};
@@ -402,7 +476,7 @@ export default function App(){
         <div style={{display:"flex",borderRadius:12,overflow:"hidden",border:"1px solid rgba(255,255,255,.15)",marginBottom:10}}>{[["create","🎮 CREATE"],["join","🚪 JOIN"]].map(([m,l])=><button key={m} onClick={()=>{setMode(m);setJerr("");}} style={{flex:1,padding:"11px 0",fontFamily:"inherit",fontSize:12,fontWeight:700,cursor:"pointer",background:mode===m?"#f59e0b":"transparent",color:mode===m?"#fff":"rgba(255,255,255,.5)",border:"none",letterSpacing:1}}>{l}</button>)}</div>
         {mode==="create"&&<LobbyB txt="🎮 CREATE ROOM" onClick={doCreate} dis={!nm.trim()||!wallet}/>}
         {mode==="join"&&<div><div style={{fontSize:9,color:"rgba(255,255,255,.4)",letterSpacing:2,marginBottom:6}}>ENTER ROOM ID</div><input value={jin} onChange={e=>{setJin(e.target.value.toUpperCase());setJerr("");}} maxLength={6} placeholder="ABC123" style={{width:"100%",background:"rgba(255,255,255,.08)",border:"2px solid "+(jin.length===6?"#22c55e":"rgba(255,255,255,.15)"),borderRadius:12,padding:"12px",color:"#22c55e",fontSize:24,outline:"none",fontFamily:"'Black Ops One',cursive",boxSizing:"border-box",textAlign:"center",letterSpacing:10,marginBottom:6}}/>{jerr&&<div style={{padding:"7px 10px",background:"rgba(239,68,68,.15)",border:"1px solid rgba(239,68,68,.4)",borderRadius:8,fontSize:11,color:"#ef4444",marginBottom:6}}>⚠ {jerr}</div>}<button onClick={doJoin} disabled={!nm.trim()||!wallet||jin.length<6} style={{width:"100%",padding:"14px 0",background:jin.length===6&&nm.trim()&&wallet?"linear-gradient(90deg,#22c55e,#16a34a)":"rgba(255,255,255,.08)",color:jin.length===6&&nm.trim()&&wallet?"#fff":"rgba(255,255,255,.3)",border:"none",borderRadius:12,fontFamily:"inherit",fontSize:14,fontWeight:900,cursor:jin.length===6&&nm.trim()&&wallet?"pointer":"default",letterSpacing:2}}>🚪 JOIN ROOM</button></div>}
-        <div style={{marginTop:12,background:"rgba(255,255,255,.04)",borderRadius:12,padding:"10px",border:"1px solid rgba(255,255,255,.08)"}}><div style={{color:"#f59e0b",fontSize:10,fontWeight:700,letterSpacing:2,marginBottom:6}}>RULES</div>{[["30s/turn","Open 1 field. Timer starts when both join."],["Guessing","Correct = keep turn. Wrong = opponent's turn."],["Time up","30s = random field auto-reveals."],["Final","All fields open: 60s idle = winner by POINTS."],["Points","Theme +20 · Final +30"]].map(([t,d],i)=><div key={i} style={{display:"flex",gap:8,marginBottom:4}}><span style={{fontSize:9,color:"#f59e0b",fontWeight:700,whiteSpace:"nowrap",minWidth:55}}>{t}</span><span style={{fontSize:10,color:"rgba(255,255,255,.45)",lineHeight:1.4}}>{d}</span></div>)}</div>
+        <div style={{marginTop:12,background:"rgba(255,255,255,.04)",borderRadius:12,padding:"10px",border:"1px solid rgba(255,255,255,.08)"}}><div style={{color:"#f59e0b",fontSize:10,fontWeight:700,letterSpacing:2,marginBottom:6}}>RULES</div>{[["30s/turn","Open 1 field per turn. Guess col theme or final answer."],["Guessing","Correct = keep turn. Wrong = opponent's turn."],["Time up","30s = random field auto-reveals. Pass if already opened."],["Final phase","All fields open: 3 attempts total between both players."],["Draw","Equal/zero points = DRAW, wager returned to both."],["Points","Theme +20 · Final +30"]].map(([t,d],i)=><div key={i} style={{display:"flex",gap:8,marginBottom:4}}><span style={{fontSize:9,color:"#f59e0b",fontWeight:700,whiteSpace:"nowrap",minWidth:55}}>{t}</span><span style={{fontSize:10,color:"rgba(255,255,255,.45)",lineHeight:1.4}}>{d}</span></div>)}</div>
         <div style={{textAlign:"center",marginTop:12,paddingBottom:6}}><span style={{fontFamily:"'Black Ops One',cursive",fontSize:11,letterSpacing:2}}><span style={{color:"#8b5cf6"}}>DEGEN</span><span style={{color:"#22c55e"}}>SAFE</span><span style={{color:"rgba(255,255,255,.3)"}}>.FUN</span></span></div>
       </div>
     </div>
@@ -420,20 +494,24 @@ export default function App(){
       </div>
     </div>
   );
-  if(scr==="result"||winner)return(
+  if(scr==="result"||winner){
+    const isDraw=winner==="draw";
+    const iWin=winner===myRole;
+    return(
     <div style={ROOT}><style>{CSS}</style>
       <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
         <div style={{width:"100%",maxWidth:380,background:"#0a1628",borderRadius:20,padding:"24px 18px",textAlign:"center",border:"2px solid rgba(255,255,255,.1)"}}>
-          <div style={{fontSize:56}}>{winner===myRole?"🏆":"💀"}</div>
-          <div style={{fontFamily:"'Black Ops One',cursive",fontSize:24,letterSpacing:3,marginTop:6,color:winner===myRole?"#22c55e":"#ef4444"}}>{winner===myRole?"YOU WIN!":"YOU LOSE"}</div>
+          <div style={{fontSize:56}}>{isDraw?"🤝":iWin?"🏆":"💀"}</div>
+          <div style={{fontFamily:"'Black Ops One',cursive",fontSize:24,letterSpacing:3,marginTop:6,color:isDraw?"#f59e0b":iWin?"#22c55e":"#ef4444"}}>{isDraw?"DRAW!":iWin?"YOU WIN!":"YOU LOSE"}</div>
           <div style={{color:"rgba(255,255,255,.5)",fontSize:12,marginTop:5,marginBottom:18}}>{winReason}</div>
-          <div style={{display:"flex",gap:12,justifyContent:"center",marginBottom:18}}>{["p1","p2"].map(r=><div key={r} style={{flex:1,padding:"12px",borderRadius:12,background:r===winner?"rgba(34,197,94,.1)":"rgba(255,255,255,.05)",border:"2px solid "+(r===winner?"#22c55e":"rgba(255,255,255,.1)")}}><div style={{fontSize:10,color:"rgba(255,255,255,.4)"}}>{r===myRole?myNm:opNm}</div><div style={{fontSize:30,fontWeight:900,color:r===winner?"#22c55e":"#fff"}}>{r==="p1"?scores.p1:scores.p2}</div><div style={{fontSize:9,color:"rgba(255,255,255,.3)"}}>pts</div></div>)}</div>
-          {winner===myRole&&<div style={{color:"#f59e0b",fontSize:12,marginBottom:14}}>🎉 Winnings: <b>{wager*2}</b> FREEDOM tokens</div>}
+          <div style={{display:"flex",gap:12,justifyContent:"center",marginBottom:18}}>{["p1","p2"].map(r=>{const isW=!isDraw&&r===winner;return(<div key={r} style={{flex:1,padding:"12px",borderRadius:12,background:isDraw?"rgba(245,158,11,.08)":isW?"rgba(34,197,94,.1)":"rgba(255,255,255,.05)",border:"2px solid "+(isDraw?"rgba(245,158,11,.4)":isW?"#22c55e":"rgba(255,255,255,.1)")}}><div style={{fontSize:10,color:"rgba(255,255,255,.4)"}}>{r===myRole?myNm:opNm}</div><div style={{fontSize:30,fontWeight:900,color:isDraw?"#f59e0b":isW?"#22c55e":"#fff"}}>{r==="p1"?scores.p1:scores.p2}</div><div style={{fontSize:9,color:"rgba(255,255,255,.3)"}}>pts</div></div>);})}</div>
+          {isDraw&&<div style={{color:"#f59e0b",fontSize:12,marginBottom:14}}>🤝 Draw — wager of <b>{wager}</b> tokens returned to both players</div>}
+          {!isDraw&&iWin&&<div style={{color:"#f59e0b",fontSize:12,marginBottom:14}}>🎉 Winnings: <b>{wager*2}</b> FREEDOM tokens</div>}
           <button onClick={doReset} style={{width:"100%",padding:"13px",background:"linear-gradient(90deg,#8b5cf6,#7c3aed)",color:"#fff",border:"none",borderRadius:12,fontFamily:"inherit",fontSize:13,fontWeight:900,cursor:"pointer",letterSpacing:2,boxShadow:"0 4px 0 rgba(0,0,0,.3)"}}>NEW GAME</button>
         </div>
       </div>
     </div>
-  );
+  );}
   if(!board)return<Spin msg="Loading..."/>;
   const[colA,colB,colC,colD]=board.columns;
 
@@ -442,8 +520,8 @@ export default function App(){
       <div style={{display:"flex",alignItems:"center",gap:8}}>
         <div style={{flex:1,display:"flex",alignItems:"center",gap:8}}><div style={{width:34,height:34,borderRadius:"50%",background:PC1,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Black Ops One',cursive",fontSize:11,color:"#fff",flexShrink:0}}>{myNm.slice(0,2).toUpperCase()}</div><div><div style={{fontSize:10,color:"rgba(255,255,255,.5)"}}>{myNm}</div><div style={{fontSize:20,fontWeight:900,color:"#fff",lineHeight:1}}>{myScore}</div></div></div>
         <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:1,minWidth:56}}>
-          <div style={{width:44,height:44,borderRadius:"50%",background:"#060e1c",border:"3px solid "+(!started?"#1a3450":finalPhase?(it<10?"#ef4444":"#f59e0b"):isMy?"#22c55e":"#1a3450"),display:"flex",alignItems:"center",justifyContent:"center"}}><span style={{fontFamily:"'Black Ops One',cursive",fontSize:13,fontWeight:900,color:!started?"#1a3450":finalPhase?"#f59e0b":isMy?"#22c55e":"#1a3450"}}>{!started?"⏳":finalPhase&&isMy?it:!finalPhase&&isMy?tt:"·"}</span></div>
-          <div style={{fontSize:6,color:isMy&&started?"#22c55e":"rgba(255,255,255,.3)",letterSpacing:1,fontWeight:700}}>{!started?"WAIT":finalPhase?"FINAL":isMy?"YOUR TURN":"WAIT"}</div>
+          <div style={{width:44,height:44,borderRadius:"50%",background:"#060e1c",border:"3px solid "+(!started?"#1a3450":finalPhase?(tt<10?"#ef4444":"#f59e0b"):isMy?"#22c55e":"#1a3450"),display:"flex",alignItems:"center",justifyContent:"center"}}><span style={{fontFamily:"'Black Ops One',cursive",fontSize:13,fontWeight:900,color:!started?"#1a3450":finalPhase?"#f59e0b":isMy?"#22c55e":"#1a3450"}}>{!started?"⏳":isMy?tt:"·"}</span></div>
+          <div style={{fontSize:6,color:isMy&&started?"#22c55e":"rgba(255,255,255,.3)",letterSpacing:1,fontWeight:700}}>{!started?"WAIT":finalPhase?"FINAL ×"+(gs?.finalAttempts||0):isMy?"YOUR TURN":"WAIT"}</div>
         </div>
         <div style={{flex:1,display:"flex",alignItems:"center",gap:8,justifyContent:"flex-end"}}><div style={{textAlign:"right"}}><div style={{fontSize:10,color:"rgba(255,255,255,.5)"}}>{opNm}</div><div style={{fontSize:20,fontWeight:900,color:"#fff",lineHeight:1}}>{opScore}</div></div><div style={{width:34,height:34,borderRadius:"50%",background:PC2,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Black Ops One',cursive",fontSize:11,color:"#fff",flexShrink:0}}>{opNm.slice(0,2).toUpperCase()}</div></div>
       </div>
