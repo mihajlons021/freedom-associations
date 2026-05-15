@@ -19,7 +19,7 @@ function getUid() {
 const ESCROW = "GynyDkXj8WVdP7XDL1nTekF7Azv7ebxA7RCMnY3a3tSu";
 const FREEDOM_MINT = "DGNPSiTrX5xnKcpVKBaXUsWBZbFuA2cJcb7fUJmoAJrd";
 const TOKEN_DECIMALS = 6; // FREEDOM token decimals
-const HELIUS_RPC = "https://rpc.ankr.com/solana";
+const HELIUS_RPC = "https://mainnet.helius-rpc.com/?api-key=45c09379-40fc-49f0-93a0-733d9d41d1a4";
 const WAGERS = [100,500,1000];
 const TSEC=30, ISEC=60;
 const PC1="#e53935", PC2="#1e88e5";
