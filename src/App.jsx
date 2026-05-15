@@ -287,6 +287,51 @@ function FIn({solved,solvedBy,answer,disabled,onGuess,h}){
 
 function Spin({msg}){return<div style={ROOT}><style>{CSS}</style><div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:14}}><div style={{width:52,height:52,border:"4px solid rgba(255,255,255,.1)",borderTop:"4px solid #f59e0b",borderRadius:"50%",animation:"spin 1s linear infinite"}}/><div style={{color:"rgba(255,255,255,.6)",fontSize:13,letterSpacing:2}}>{msg}</div></div></div>;}
 
+function EndOverlay({cd,winner,myRole,p1name,p2name,scores,wager,board}){
+  const isDraw=winner==="draw";
+  const iWin=winner===myRole;
+  const winnerName=winner==="p1"?p1name:winner==="p2"?p2name:null;
+  return(
+    <div style={{position:"absolute",inset:0,zIndex:100,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.82)",backdropFilter:"blur(4px)"}}>
+      <div style={{textAlign:"center",padding:"32px 24px",background:"#0a1628",borderRadius:24,border:"2px solid "+(isDraw?"#f59e0b":iWin?"#22c55e":"#ef4444"),maxWidth:420,width:"90%",boxShadow:"0 0 60px "+(isDraw?"rgba(245,158,11,.3)":iWin?"rgba(34,197,94,.3)":"rgba(239,68,68,.3)")}}>
+        <div style={{fontSize:64,marginBottom:8}}>{isDraw?"🤝":iWin?"🏆":"💀"}</div>
+        <div style={{fontFamily:"'Black Ops One',cursive",fontSize:28,letterSpacing:3,color:isDraw?"#f59e0b":iWin?"#22c55e":"#ef4444",marginBottom:4}}>
+          {isDraw?"DRAW!":iWin?"YOU WIN!":"YOU LOSE"}
+        </div>
+        {!isDraw&&<div style={{fontSize:14,color:"rgba(255,255,255,.6)",marginBottom:16}}>🏅 <b style={{color:"#fff"}}>{winnerName}</b> takes <b style={{color:"#f59e0b"}}>{wager*2}</b> FREEDOM tokens</div>}
+        {isDraw&&<div style={{fontSize:14,color:"rgba(255,255,255,.6)",marginBottom:16}}>Both players get their <b style={{color:"#f59e0b"}}>{wager}</b> tokens back</div>}
+        {/* Scores */}
+        <div style={{display:"flex",gap:12,justifyContent:"center",marginBottom:16}}>
+          {["p1","p2"].map(r=>{const isW=!isDraw&&r===winner;return(
+            <div key={r} style={{flex:1,padding:"10px",borderRadius:12,background:isDraw?"rgba(245,158,11,.08)":isW?"rgba(34,197,94,.1)":"rgba(255,255,255,.05)",border:"2px solid "+(isDraw?"rgba(245,158,11,.3)":isW?"#22c55e":"rgba(255,255,255,.1)")}}>
+              <div style={{fontSize:10,color:"rgba(255,255,255,.4)",marginBottom:2}}>{r==="p1"?p1name:p2name}</div>
+              <div style={{fontSize:28,fontWeight:900,color:isDraw?"#f59e0b":isW?"#22c55e":"#fff"}}>{r==="p1"?scores.p1:scores.p2}</div>
+              <div style={{fontSize:9,color:"rgba(255,255,255,.3)"}}>pts</div>
+            </div>
+          );})}
+        </div>
+        {/* Draw: reveal all answers */}
+        {isDraw&&board&&<div style={{background:"rgba(255,255,255,.04)",borderRadius:12,padding:"10px 12px",marginBottom:16,textAlign:"left"}}>
+          <div style={{fontSize:9,color:"#f59e0b",letterSpacing:2,fontWeight:700,marginBottom:8}}>ANSWERS</div>
+          {board.columns.map(c=><div key={c.id} style={{display:"flex",gap:8,alignItems:"center",marginBottom:5}}>
+            <span style={{fontFamily:"'Black Ops One',cursive",fontSize:12,color:"rgba(0,255,255,0.7)",minWidth:16}}>{c.id}</span>
+            <span style={{fontSize:12,color:"rgba(255,255,255,.8)",fontWeight:700}}>{c.theme}</span>
+          </div>)}
+          <div style={{display:"flex",gap:8,alignItems:"center",marginTop:6,borderTop:"1px solid rgba(255,255,255,.1)",paddingTop:6}}>
+            <span style={{fontFamily:"'Black Ops One',cursive",fontSize:12,color:"#f59e0b",minWidth:16}}>★</span>
+            <span style={{fontSize:12,color:"#f59e0b",fontWeight:700}}>{board.final.answer}</span>
+          </div>
+        </div>}
+        {/* Countdown */}
+        <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+          <div style={{width:36,height:36,borderRadius:"50%",background:"rgba(255,255,255,.06)",border:"2px solid rgba(255,255,255,.2)",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Black Ops One',cursive",fontSize:16,color:"#fff"}}>{cd}</div>
+          <span style={{fontSize:11,color:"rgba(255,255,255,.4)"}}>Returning to lobby...</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function App(){
   const[myUid]=useState(getUid);
   const[scr,setScr]=useState("lobby");
@@ -308,9 +353,13 @@ export default function App(){
   const[log,setLog]=useState([]);
   const[isDesktop,setIsDesktop]=useState(window.innerWidth>=768);
   // Desktop: lifted input state — prevents XTh remount from wiping local useState
-  const[dtCol,setDtCol]=useState(null);   // which col input is open: "A"|"B"|"C"|"D"|null
-  const[dtVal,setDtVal]=useState("");      // current input value
-  const[dtErr,setDtErr]=useState(false);  // shake animation flag
+  const[dtCol,setDtCol]=useState(null);
+  const[dtVal,setDtVal]=useState("");
+  const[dtErr,setDtErr]=useState(false);
+  // End sequence: show game board 10s before going to result
+  const[ending,setEnding]=useState(false);
+  const[endCd,setEndCd]=useState(10);
+  const endR=useRef();
 
   const tR=useRef(),iR=useRef(),lastAct=useRef(Date.now()),rRef=useRef(null),didOpenRef=useRef(false);
   const L=m=>setLog(p=>[m,...p].slice(0,4));
@@ -323,7 +372,7 @@ export default function App(){
   useEffect(()=>{setDtCol(null);setDtVal("");setDtErr(false);},[gs?.currentTurn]);
   useEffect(()=>{try{if(window.solana?.isPhantom&&window.solana.publicKey)setWallet(window.solana.publicKey.toString());}catch{};},[]);
 
-  useEffect(()=>{if(!roomId||!db)return;rRef.current=ref(db,"games/"+roomId);const u=onValue(rRef.current,s=>{const d=s.val();if(!d)return;setGs(d);if(d.status==="finished")setScr("result");if(d.status==="active"&&d.p1&&d.p2&&!started){setStarted(true);lastAct.current=Date.now();}});return()=>u();},[roomId,started]);
+  useEffect(()=>{if(!roomId||!db)return;rRef.current=ref(db,"games/"+roomId);const u=onValue(rRef.current,s=>{const d=s.val();if(!d)return;setGs(d);if(d.status==="finished"&&!ending){startEnding();}if(d.status==="active"&&d.p1&&d.p2&&!started){setStarted(true);lastAct.current=Date.now();}});return()=>u();},[roomId,started,ending]);
 
   useEffect(()=>{if(scr!=="game"||!started||!gs)return;if(gs.status==="finished"||gs.currentTurn!==myRole)return;clearInterval(tR.current);setTt(TSEC);tR.current=setInterval(()=>setTt(t=>{if(t<=1){clearInterval(tR.current);autoRev();return TSEC;}return t-1;}),1000);return()=>clearInterval(tR.current);},[gs?.currentTurn,gs?.finalPhase,scr,started]);
 
@@ -352,6 +401,16 @@ export default function App(){
     setJerr("");setScr("loading");setLdmsg("Looking for room "+id+"...");
     try{const sn=await get(ref(db,"games/"+id));if(!sn.exists()){setJerr("Room "+id+" not found!");setScr("lobby");return;}const d=sn.val();if(d.status!=="waiting"){setJerr("Room already started!");setScr("lobby");return;}if(d.p1===myUid){setJerr("Can't join your own room!");setScr("lobby");return;}const tx=await signW(d.wager);if(!tx.ok){alert("Wager failed: "+tx.err);setScr("lobby");return;}await update(ref(db,"games/"+id),{p2:myUid,p2name:nm,p2wallet:wallet,status:"active",currentTurn:"p1",lastActivity:Date.now(),p2tx:tx.id});setWager(d.wager);setRoomId(id);setMyRole("p2");setStarted(true);lastAct.current=Date.now();setScr("game");L("Joined! P2. P1 goes first.");}
     catch(e){setJerr("Error: "+e.message);setScr("lobby");}
+  }
+
+  function startEnding(){
+    clearInterval(tR.current);clearInterval(iR.current);clearInterval(endR.current);
+    setEnding(true);setEndCd(10);
+    let c=10;
+    endR.current=setInterval(()=>{
+      c--;setEndCd(c);
+      if(c<=0){clearInterval(endR.current);setEnding(false);doReset();}
+    },1000);
   }
 
   async function doOpen(fid){if(!isMy||didOpen||gs?.finalPhase||!started)return;touch();setDidOpen(true);await update(rRef.current,{["revealed/"+fid]:"clue",lastActivity:Date.now()});L("Field "+fid+" opened!");}
@@ -494,24 +553,6 @@ export default function App(){
       </div>
     </div>
   );
-  if(scr==="result"||winner){
-    const isDraw=winner==="draw";
-    const iWin=winner===myRole;
-    return(
-    <div style={ROOT}><style>{CSS}</style>
-      <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
-        <div style={{width:"100%",maxWidth:380,background:"#0a1628",borderRadius:20,padding:"24px 18px",textAlign:"center",border:"2px solid rgba(255,255,255,.1)"}}>
-          <div style={{fontSize:56}}>{isDraw?"🤝":iWin?"🏆":"💀"}</div>
-          <div style={{fontFamily:"'Black Ops One',cursive",fontSize:24,letterSpacing:3,marginTop:6,color:isDraw?"#f59e0b":iWin?"#22c55e":"#ef4444"}}>{isDraw?"DRAW!":iWin?"YOU WIN!":"YOU LOSE"}</div>
-          <div style={{color:"rgba(255,255,255,.5)",fontSize:12,marginTop:5,marginBottom:18}}>{winReason}</div>
-          <div style={{display:"flex",gap:12,justifyContent:"center",marginBottom:18}}>{["p1","p2"].map(r=>{const isW=!isDraw&&r===winner;return(<div key={r} style={{flex:1,padding:"12px",borderRadius:12,background:isDraw?"rgba(245,158,11,.08)":isW?"rgba(34,197,94,.1)":"rgba(255,255,255,.05)",border:"2px solid "+(isDraw?"rgba(245,158,11,.4)":isW?"#22c55e":"rgba(255,255,255,.1)")}}><div style={{fontSize:10,color:"rgba(255,255,255,.4)"}}>{r===myRole?myNm:opNm}</div><div style={{fontSize:30,fontWeight:900,color:isDraw?"#f59e0b":isW?"#22c55e":"#fff"}}>{r==="p1"?scores.p1:scores.p2}</div><div style={{fontSize:9,color:"rgba(255,255,255,.3)"}}>pts</div></div>);})}</div>
-          {isDraw&&<div style={{color:"#f59e0b",fontSize:12,marginBottom:14}}>🤝 Draw — wager of <b>{wager}</b> tokens returned to both players</div>}
-          {!isDraw&&iWin&&<div style={{color:"#f59e0b",fontSize:12,marginBottom:14}}>🎉 Winnings: <b>{wager*2}</b> FREEDOM tokens</div>}
-          <button onClick={doReset} style={{width:"100%",padding:"13px",background:"linear-gradient(90deg,#8b5cf6,#7c3aed)",color:"#fff",border:"none",borderRadius:12,fontFamily:"inherit",fontSize:13,fontWeight:900,cursor:"pointer",letterSpacing:2,boxShadow:"0 4px 0 rgba(0,0,0,.3)"}}>NEW GAME</button>
-        </div>
-      </div>
-    </div>
-  );}
   if(!board)return<Spin msg="Loading..."/>;
   const[colA,colB,colC,colD]=board.columns;
 
@@ -620,7 +661,9 @@ export default function App(){
     };
 
     return(
-      <div style={ROOT}><style>{CSS}</style>
+      <div style={{...ROOT,position:"relative"}}><style>{CSS}</style>
+      {/* ENDING OVERLAY */}
+      {ending&&<EndOverlay cd={endCd} winner={winner} myRole={myRole} p1name={gs?.p1name} p2name={gs?.p2name} scores={gs?.scores||{p1:0,p2:0}} wager={wager} board={board}/>}
       {SB}
       <div style={{flex:1,padding:"4px 12px 4px",display:"flex",flexDirection:"column",overflow:"hidden"}}>
 
@@ -701,7 +744,8 @@ export default function App(){
 
   /* MOBILE — unchanged */
   return(
-    <div style={ROOT}><style>{CSS}</style>
+    <div style={{...ROOT,position:"relative"}}><style>{CSS}</style>
+    {ending&&<EndOverlay cd={endCd} winner={winner} myRole={myRole} p1name={gs?.p1name} p2name={gs?.p2name} scores={gs?.scores||{p1:0,p2:0}} wager={wager} board={board}/>}
     {SB}
     <div style={{flex:1,overflowY:"auto",padding:"7px 10px"}}>
       <div style={{maxWidth:500,margin:"0 auto",display:"flex",flexDirection:"column",gap:5}}>
