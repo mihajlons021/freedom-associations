@@ -261,45 +261,13 @@ function match(a,b){return nrm(a)===nrm(b);}
 function gid(){return Math.random().toString(36).slice(2,8).toUpperCase();}
 async function phantom(){try{if(!window.solana?.isPhantom){window.open("https://phantom.app/","_blank");return null;}return(await window.solana.connect()).publicKey.toString();}catch{return null;}}
 
-/* ── REAL ON-CHAIN FREEDOM TOKEN TRANSFER TO ESCROW ── */
+/* ── WAGER: sign message to confirm intent, actual transfer via payout API ── */
 async function sendWager(fromWalletStr, amount) {
   try {
     if (!window.solana?.isPhantom) return { ok: false, err: "Phantom not found" };
-    const conn = new Connection(HELIUS_RPC, "confirmed");
-    const fromPk   = new PublicKey(fromWalletStr);
-    const mintPk   = new PublicKey(FREEDOM_MINT);
-    const escrowPk = new PublicKey(ESCROW);
-
-    // Get token accounts for sender and escrow
-    const fromATA  = await getAssociatedTokenAddress(mintPk, fromPk);
-    const toATA    = await getAssociatedTokenAddress(mintPk, escrowPk);
-
-    // Amount in token base units
-    const rawAmount = BigInt(Math.round(amount * Math.pow(10, TOKEN_DECIMALS)));
-
-    const { blockhash, lastValidBlockHeight } = await conn.getLatestBlockhash("confirmed");
-
-    const tx = new Transaction({
-      recentBlockhash: blockhash,
-      feePayer: fromPk,
-    }).add(
-      createTransferInstruction(
-        fromATA,          // sender's token account
-        toATA,            // escrow's token account
-        fromPk,           // owner/signer
-        rawAmount,
-        [],
-        TOKEN_PROGRAM_ID
-      )
-    );
-
-    // Sign and send via Phantom
-    const { signature } = await window.solana.signAndSendTransaction(tx);
-
-    // Wait for confirmation
-    await conn.confirmTransaction({ signature, blockhash, lastValidBlockHeight }, "confirmed");
-
-    return { ok: true, id: signature };
+    const msg = new TextEncoder().encode(`FREEDOM Associations wager: ${amount} tokens from ${fromWalletStr}`);
+    const signed = await window.solana.signMessage(msg, "utf8");
+    return { ok: true, id: "SIG_" + Date.now(), sig: Buffer.from(signed.signature).toString("hex") };
   } catch (e) {
     return { ok: false, err: e.message || String(e) };
   }
