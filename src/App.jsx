@@ -20,20 +20,12 @@ function getUid() {
 
 const ESCROW = "GynyDkXj8WVdP7XDL1nTekF7Azv7ebxA7RCMnY3a3tSu";
 const FREEDOM_MINT = "DGNPSiTrX5xnKcpVKBaXUsWBZbFuA2cJcb7fUJmoAJrd";
-const TOKEN_DECIMALS = 6; // FREEDOM token decimals
+const TOKEN_DECIMALS = 6;
 const HELIUS_RPC = "https://mainnet.helius-rpc.com/?api-key=45c09379-40fc-49f0-93a0-733d9d41d1a4";
 const WAGERS = [100,500,1000];
 const TSEC=30, ISEC=60;
 const PC1="#e53935", PC2="#1e88e5";
 
-/* ═════════════════════════════════════════════════
-   30 COMPLETELY FRESH BOARDS
-   Forbidden forever: Animals, Food (pizza/sushi/burrito/baguette),
-   King of jungle, Black & white stripes, Trunk & tusks
-   
-   Board rotates automatically every 30 seconds via timestamp.
-   Users who create rooms at different times get different boards.
-═════════════════════════════════════════════════ */
 const B = [
   /* 0 */ { columns:[
     {id:"A",theme:"BRIDGES",fields:[{id:"A1",clue:"London drawbridge",answer:"TOWERBRIDGE"},{id:"A2",clue:"San Francisco icon",answer:"GOLDENGATE"},{id:"A3",clue:"Venice marble",answer:"RIALTO"},{id:"A4",clue:"Brooklyn NY",answer:"BROOKLYN"}]},
@@ -246,11 +238,6 @@ const B = [
   ], final:{answer:"STRATEGY",hint:"Thinking ahead to win"} },
 ];
 
-/* ═══════════════════════════════════════════
-   TIMESTAMP-BASED BOARD ROTATION
-   Board changes every 30 seconds automatically.
-   Each time you create a room = different board.
-═══════════════════════════════════════════ */
 function getCurrentBoard() {
   const idx = Math.floor(Date.now() / 30000) % B.length;
   return JSON.parse(JSON.stringify(B[idx]));
@@ -261,7 +248,6 @@ function match(a,b){return nrm(a)===nrm(b);}
 function gid(){return Math.random().toString(36).slice(2,8).toUpperCase();}
 async function phantom(){try{if(!window.solana?.isPhantom){window.open("https://phantom.app/","_blank");return null;}return(await window.solana.connect()).publicKey.toString();}catch{return null;}}
 
-/* ── WAGER: sign message to confirm intent, actual transfer via payout API ── */
 async function sendWager(fromWalletStr, amount) {
   try {
     if (!window.solana?.isPhantom) return { ok: false, err: "Phantom not found" };
@@ -273,17 +259,14 @@ async function sendWager(fromWalletStr, amount) {
   }
 }
 
-/* ══ FIELD COMPONENT ══ */
 function Fld({field,st,solvedBy,canOpen,onOpen,h}){
   const bg=st==="solved"?(solvedBy==="p1"?PC1:PC2):st==="clue"?"#c47d0e":canOpen?"#2d5a8a":"#1e3a5a";
   const s={width:"100%",height:h||52,borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:2,padding:"0 8px",boxSizing:"border-box",background:bg,border:st==="clue"?"2px solid #f59e0b":st==="solved"?"none":canOpen?"1px solid #3a6a9a":"1px solid #1a2a3a",boxShadow:canOpen&&st==="hidden"?"0 3px 8px rgba(0,0,0,.5)":st==="solved"?"0 3px 0 rgba(0,0,0,.4)":"none",cursor:canOpen&&st==="hidden"?"pointer":"default",transition:"all .15s",userSelect:"none"};
   if(st==="solved")return<div style={s}><div style={{fontSize:"clamp(9px,1.1vw,15px)",fontWeight:900,color:"#fff",textAlign:"center",letterSpacing:.5}}>{field.answer}</div><div style={{fontSize:"clamp(6px,.8vw,10px)",color:"rgba(255,255,255,.7)",textAlign:"center"}}>{field.clue}</div></div>;
-  /* NO "CLUE" label — just the text directly */
   if(st==="clue")return<div style={s}><div style={{fontSize:"clamp(9px,1vw,14px)",color:"#fff",fontWeight:700,textAlign:"center",lineHeight:1.2}}>{field.clue}</div></div>;
   return<div onClick={canOpen?()=>onOpen(field.id):undefined} style={s} onMouseEnter={e=>{if(canOpen)e.currentTarget.style.background="#3a6e9e";}} onMouseLeave={e=>{if(canOpen)e.currentTarget.style.background="#2d5a8a";}}><span style={{fontSize:"clamp(11px,1.2vw,18px)",fontWeight:900,color:canOpen?"#7ab8e0":"#1a2a3a",letterSpacing:1}}>{field.id}</span></div>;
 }
 
-/* ══ THEME INPUT ══ */
 function TIn({cid,solved,solvedBy,theme,disabled,onGuess,h}){
   const[ed,setEd]=useState(false);const[v,setV]=useState("");const[err,setErr]=useState(false);
   const sc=solvedBy==="p1"?PC1:PC2;const ph=h||48;
@@ -293,7 +276,6 @@ function TIn({cid,solved,solvedBy,theme,disabled,onGuess,h}){
   return<div onClick={disabled?undefined:()=>setEd(true)} style={{width:"100%",height:ph,borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",background:disabled?"#111c2a":"rgba(45,90,138,.35)",border:"2px dashed "+(disabled?"#1a2a3a":"#5b9bd5"),cursor:disabled?"default":"pointer",transition:"all .15s"}} onMouseEnter={e=>{if(!disabled)e.currentTarget.style.background="rgba(45,90,138,.55)";}} onMouseLeave={e=>{if(!disabled)e.currentTarget.style.background="rgba(45,90,138,.35)";}}><span style={{fontSize:22,color:disabled?"#1a2a3a":"#7ab8e0",fontWeight:900}}>?</span></div>;
 }
 
-/* ══ FINAL INPUT ══ */
 function FIn({solved,solvedBy,answer,disabled,onGuess,h}){
   const[ed,setEd]=useState(false);const[v,setV]=useState("");const[err,setErr]=useState(false);
   const sc=solvedBy==="p1"?PC1:PC2;const ph=h||56;
@@ -309,6 +291,10 @@ function EndOverlay({cd,winner,myRole,p1name,p2name,scores,wager,board}){
   const isDraw=winner==="draw";
   const iWin=winner===myRole;
   const winnerName=winner==="p1"?p1name:winner==="p2"?p2name:null;
+  // 95/5 split
+  const totalPot=wager*2;
+  const winnerPayout=Math.floor(totalPot*0.95);
+  const burnAmt=totalPot-winnerPayout;
   return(
     <div style={{position:"absolute",inset:0,zIndex:100,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.82)",backdropFilter:"blur(4px)"}}>
       <div style={{textAlign:"center",padding:"32px 24px",background:"#0a1628",borderRadius:24,border:"2px solid "+(isDraw?"#f59e0b":iWin?"#22c55e":"#ef4444"),maxWidth:420,width:"90%",boxShadow:"0 0 60px "+(isDraw?"rgba(245,158,11,.3)":iWin?"rgba(34,197,94,.3)":"rgba(239,68,68,.3)")}}>
@@ -316,8 +302,21 @@ function EndOverlay({cd,winner,myRole,p1name,p2name,scores,wager,board}){
         <div style={{fontFamily:"'Black Ops One',cursive",fontSize:28,letterSpacing:3,color:isDraw?"#f59e0b":iWin?"#22c55e":"#ef4444",marginBottom:4}}>
           {isDraw?"DRAW!":iWin?"YOU WIN!":"YOU LOSE"}
         </div>
-        {!isDraw&&<div style={{fontSize:14,color:"rgba(255,255,255,.6)",marginBottom:16}}>🏅 <b style={{color:"#fff"}}>{winnerName}</b> takes <b style={{color:"#f59e0b"}}>{wager*2}</b> FREEDOM tokens</div>}
-        {isDraw&&<div style={{fontSize:14,color:"rgba(255,255,255,.6)",marginBottom:16}}>Both players get their <b style={{color:"#f59e0b"}}>{wager}</b> tokens back</div>}
+        {/* IZMENA: prikazujemo 95% payout + koliko se sagoreva */}
+        {!isDraw&&(
+          <div style={{fontSize:14,color:"rgba(255,255,255,.6)",marginBottom:16}}>
+            🏅 <b style={{color:"#fff"}}>{winnerName}</b> takes{" "}
+            <b style={{color:"#f59e0b"}}>{winnerPayout}</b> FREEDOM
+            <span style={{fontSize:11,color:"rgba(255,120,120,.8)",marginLeft:6}}>
+              ({burnAmt} burned 🔥)
+            </span>
+          </div>
+        )}
+        {isDraw&&(
+          <div style={{fontSize:14,color:"rgba(255,255,255,.6)",marginBottom:16}}>
+            Both players get their <b style={{color:"#f59e0b"}}>{wager}</b> tokens back
+          </div>
+        )}
         {/* Scores */}
         <div style={{display:"flex",gap:12,justifyContent:"center",marginBottom:16}}>
           {["p1","p2"].map(r=>{const isW=!isDraw&&r===winner;return(
@@ -328,7 +327,6 @@ function EndOverlay({cd,winner,myRole,p1name,p2name,scores,wager,board}){
             </div>
           );})}
         </div>
-        {/* Draw: reveal all answers */}
         {isDraw&&board&&<div style={{background:"rgba(255,255,255,.04)",borderRadius:12,padding:"10px 12px",marginBottom:16,textAlign:"left"}}>
           <div style={{fontSize:9,color:"#f59e0b",letterSpacing:2,fontWeight:700,marginBottom:8}}>ANSWERS</div>
           {board.columns.map(c=><div key={c.id} style={{display:"flex",gap:8,alignItems:"center",marginBottom:5}}>
@@ -340,7 +338,6 @@ function EndOverlay({cd,winner,myRole,p1name,p2name,scores,wager,board}){
             <span style={{fontSize:12,color:"#f59e0b",fontWeight:700}}>{board.final.answer}</span>
           </div>
         </div>}
-        {/* Countdown */}
         <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
           <div style={{width:36,height:36,borderRadius:"50%",background:"rgba(255,255,255,.06)",border:"2px solid rgba(255,255,255,.2)",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Black Ops One',cursive",fontSize:16,color:"#fff"}}>{cd}</div>
           <span style={{fontSize:11,color:"rgba(255,255,255,.4)"}}>Returning to lobby...</span>
@@ -370,11 +367,9 @@ export default function App(){
   const[didOpen,setDidOpen]=useState(false);
   const[log,setLog]=useState([]);
   const[isDesktop,setIsDesktop]=useState(window.innerWidth>=768);
-  // Desktop: lifted input state — prevents XTh remount from wiping local useState
   const[dtCol,setDtCol]=useState(null);
   const[dtVal,setDtVal]=useState("");
   const[dtErr,setDtErr]=useState(false);
-  // End sequence: show game board 10s before going to result
   const[ending,setEnding]=useState(false);
   const[endCd,setEndCd]=useState(10);
   const endR=useRef();
@@ -384,17 +379,13 @@ export default function App(){
   const touch=()=>{lastAct.current=Date.now();setIt(ISEC);};
 
   useEffect(()=>{const c=()=>setIsDesktop(window.innerWidth>=768);window.addEventListener("resize",c);return()=>window.removeEventListener("resize",c);},[]);
-  // Keep ref in sync so autoRev can read didOpen without stale closure
   useEffect(()=>{didOpenRef.current=didOpen;},[didOpen]);
-  // Reset desktop input state when turn changes (opponent's turn or after pass)
   useEffect(()=>{setDtCol(null);setDtVal("");setDtErr(false);},[gs?.currentTurn]);
   useEffect(()=>{try{if(window.solana?.isPhantom&&window.solana.publicKey)setWallet(window.solana.publicKey.toString());}catch{};},[]);
 
   useEffect(()=>{if(!roomId||!db)return;rRef.current=ref(db,"games/"+roomId);const u=onValue(rRef.current,s=>{const d=s.val();if(!d)return;setGs(d);if(d.status==="finished"&&!ending){startEnding();}if(d.status==="active"&&d.p1&&d.p2&&!started){setStarted(true);lastAct.current=Date.now();}});return()=>u();},[roomId,started,ending]);
 
   useEffect(()=>{if(scr!=="game"||!started||!gs)return;if(gs.status==="finished"||gs.currentTurn!==myRole)return;clearInterval(tR.current);setTt(TSEC);tR.current=setInterval(()=>setTt(t=>{if(t<=1){clearInterval(tR.current);autoRev();return TSEC;}return t-1;}),1000);return()=>clearInterval(tR.current);},[gs?.currentTurn,gs?.finalPhase,scr,started]);
-
-  // finalPhase: NO more idle timer — attempts-based ending handled in doGuessCol/doGuessFinal
 
   useEffect(()=>{if(!gs||gs.finalPhase||gs.status==="finished"||!gs.board)return;if(Object.keys(gs.revealed||{}).length>=gs.board.columns.reduce((s,c)=>s+c.fields.length,0)){update(rRef.current,{finalPhase:true,finalAttempts:3});L("🎯 All fields open! 3 attempts left!");}},[gs?.revealed]);
 
@@ -472,9 +463,7 @@ export default function App(){
   async function doOpen(fid){if(!isMy||didOpen||gs?.finalPhase||!started)return;touch();setDidOpen(true);await update(rRef.current,{["revealed/"+fid]:"clue",lastActivity:Date.now()});L("Field "+fid+" opened!");}
   async function autoRev(){
     if(!gs?.board||!rRef.current)return;
-    // In finalPhase — all fields already open, just pass turn
     if(gs?.finalPhase){L("⏱ Time up. Passing turn.");await doPass();return;}
-    // If player already opened a field this turn, just pass — don't reveal a second field
     if(didOpenRef.current){L("⏱ Time up. Passing turn.");await doPass();return;}
     const all=gs.board.columns.flatMap(c=>c.fields),hidden=all.filter(f=>!gs.revealed?.[f.id]);
     if(!hidden.length){await update(rRef.current,{finalPhase:true,finalAttempts:3});return;}
@@ -497,7 +486,6 @@ export default function App(){
       L("✅ "+cid+': "'+col.theme+'" +20pts!');
       return true;
     }
-    // Wrong guess
     if(gs?.finalPhase){
       const rem=(gs.finalAttempts||1)-1;
       if(rem<=0){
@@ -522,7 +510,6 @@ export default function App(){
       doEnd(myRole,"Final correct! +30pts 🎉");
       return true;
     }
-    // Wrong guess
     if(gs?.finalPhase){
       const rem=(gs.finalAttempts||1)-1;
       if(rem<=0){
@@ -545,7 +532,6 @@ export default function App(){
     clearInterval(tR.current);clearInterval(iR.current);
     if(!rRef.current)return;
     await update(rRef.current,{status:"finished",winner:w,winReason:reason,finishedAt:Date.now()});
-    // Update leaderboard
     if(gs){
       const sc=gs.scores||{p1:0,p2:0};
       for(const r of["p1","p2"]){
@@ -561,7 +547,8 @@ export default function App(){
         });
       }
     }
-    // Trigger payout from escrow — only p1 calls it (prevent double payout)
+    // Payout — samo p1 salje zahtjev (sprecava dupli payout)
+    // payout.js sam citava game iz Firebase i racuna 95/5
     if(myRole==="p1"&&roomId){
       try{
         const resp=await fetch("/api/payout",{
@@ -570,8 +557,14 @@ export default function App(){
           body:JSON.stringify({roomId})
         });
         const data=await resp.json();
+        // IZMENA: log poruka sa tacnim iznosom
         if(data.ok){
-          L(w==="draw"?"🤝 Tokens refunded to both!":"💰 Payout sent to winner!");
+          if(w==="draw"){
+            L("🤝 Refund sent to both players!");
+          } else {
+            const payout=Math.floor((wager||0)*2*0.95);
+            L(`💰 ${payout} FREEDOM sent to winner!`);
+          }
         }else{
           L("⚠️ Payout error: "+data.error);
         }
@@ -579,7 +572,8 @@ export default function App(){
         L("⚠️ Payout failed: "+e.message);
       }
     }
-  }  function doReset(){setScr("lobby");setRoomId(null);setMyRole(null);setGs(null);setDidOpen(false);setLog([]);setJin("");setJerr("");setStarted(false);}
+  }
+  function doReset(){setScr("lobby");setRoomId(null);setMyRole(null);setGs(null);setDidOpen(false);setLog([]);setJin("");setJerr("");setStarted(false);}
 
   const board=gs?.board||null,isMy=gs?.currentTurn===myRole;
   const scores=gs?.scores||{p1:0,p2:0},revealed=gs?.revealed||{},colSolved=gs?.colSolved||{};
@@ -611,7 +605,8 @@ export default function App(){
         <div style={{display:"flex",borderRadius:12,overflow:"hidden",border:"1px solid rgba(255,255,255,.15)",marginBottom:10}}>{[["create","🎮 CREATE"],["join","🚪 JOIN"]].map(([m,l])=><button key={m} onClick={()=>{setMode(m);setJerr("");}} style={{flex:1,padding:"11px 0",fontFamily:"inherit",fontSize:12,fontWeight:700,cursor:"pointer",background:mode===m?"#f59e0b":"transparent",color:mode===m?"#fff":"rgba(255,255,255,.5)",border:"none",letterSpacing:1}}>{l}</button>)}</div>
         {mode==="create"&&<LobbyB txt="🎮 CREATE ROOM" onClick={doCreate} dis={!nm.trim()||!wallet}/>}
         {mode==="join"&&<div><div style={{fontSize:9,color:"rgba(255,255,255,.4)",letterSpacing:2,marginBottom:6}}>ENTER ROOM ID</div><input value={jin} onChange={e=>{setJin(e.target.value.toUpperCase());setJerr("");}} maxLength={6} placeholder="ABC123" style={{width:"100%",background:"rgba(255,255,255,.08)",border:"2px solid "+(jin.length===6?"#22c55e":"rgba(255,255,255,.15)"),borderRadius:12,padding:"12px",color:"#22c55e",fontSize:24,outline:"none",fontFamily:"'Black Ops One',cursive",boxSizing:"border-box",textAlign:"center",letterSpacing:10,marginBottom:6}}/>{jerr&&<div style={{padding:"7px 10px",background:"rgba(239,68,68,.15)",border:"1px solid rgba(239,68,68,.4)",borderRadius:8,fontSize:11,color:"#ef4444",marginBottom:6}}>⚠ {jerr}</div>}<button onClick={doJoin} disabled={!nm.trim()||!wallet||jin.length<6} style={{width:"100%",padding:"14px 0",background:jin.length===6&&nm.trim()&&wallet?"linear-gradient(90deg,#22c55e,#16a34a)":"rgba(255,255,255,.08)",color:jin.length===6&&nm.trim()&&wallet?"#fff":"rgba(255,255,255,.3)",border:"none",borderRadius:12,fontFamily:"inherit",fontSize:14,fontWeight:900,cursor:jin.length===6&&nm.trim()&&wallet?"pointer":"default",letterSpacing:2}}>🚪 JOIN ROOM</button></div>}
-        <div style={{marginTop:12,background:"rgba(255,255,255,.04)",borderRadius:12,padding:"10px",border:"1px solid rgba(255,255,255,.08)"}}><div style={{color:"#f59e0b",fontSize:10,fontWeight:700,letterSpacing:2,marginBottom:6}}>RULES</div>{[["30s/turn","Open 1 field per turn. Guess col theme or final answer."],["Guessing","Correct = keep turn. Wrong = opponent's turn."],["Time up","30s = random field auto-reveals. Pass if already opened."],["Final phase","All fields open: 3 attempts total between both players."],["Draw","Equal/zero points = DRAW, wager returned to both."],["Points","Theme +20 · Final +30"]].map(([t,d],i)=><div key={i} style={{display:"flex",gap:8,marginBottom:4}}><span style={{fontSize:9,color:"#f59e0b",fontWeight:700,whiteSpace:"nowrap",minWidth:55}}>{t}</span><span style={{fontSize:10,color:"rgba(255,255,255,.45)",lineHeight:1.4}}>{d}</span></div>)}</div>
+        {/* RULES — IZMENA: dodat house fee red */}
+        <div style={{marginTop:12,background:"rgba(255,255,255,.04)",borderRadius:12,padding:"10px",border:"1px solid rgba(255,255,255,.08)"}}><div style={{color:"#f59e0b",fontSize:10,fontWeight:700,letterSpacing:2,marginBottom:6}}>RULES</div>{[["30s/turn","Open 1 field per turn. Guess col theme or final answer."],["Guessing","Correct = keep turn. Wrong = opponent's turn."],["Time up","30s = random field auto-reveals. Pass if already opened."],["Final phase","All fields open: 3 attempts total between both players."],["Draw","Equal/zero points = DRAW, wager returned to both."],["House fee","Winner takes 95% of pot · 5% burned 🔥"],["Points","Theme +20 · Final +30"]].map(([t,d],i)=><div key={i} style={{display:"flex",gap:8,marginBottom:4}}><span style={{fontSize:9,color:"#f59e0b",fontWeight:700,whiteSpace:"nowrap",minWidth:55}}>{t}</span><span style={{fontSize:10,color:"rgba(255,255,255,.45)",lineHeight:1.4}}>{d}</span></div>)}</div>
         <div style={{textAlign:"center",marginTop:12,paddingBottom:6}}><span style={{fontFamily:"'Black Ops One',cursive",fontSize:11,letterSpacing:2}}><span style={{color:"#8b5cf6"}}>DEGEN</span><span style={{color:"#22c55e"}}>SAFE</span><span style={{color:"rgba(255,255,255,.3)"}}>.FUN</span></span></div>
       </div>
     </div>
@@ -648,46 +643,12 @@ export default function App(){
 
   const PL=(<div style={{display:"flex",gap:8,alignItems:"flex-start"}}>{isMy&&!finalPhase&&didOpen&&started&&<button onClick={()=>{touch();doPass();L("Passed.");}} style={{padding:"6px 12px",background:"rgba(255,255,255,.08)",color:"rgba(255,255,255,.6)",border:"1px solid rgba(255,255,255,.15)",borderRadius:8,fontFamily:"inherit",fontSize:10,fontWeight:700,cursor:"pointer",flexShrink:0}}>PASS</button>}{log.length>0&&<div style={{flex:1,padding:"4px 8px",background:"rgba(0,0,0,.3)",borderRadius:8}}>{log.map((l,i)=><div key={i} style={{fontSize:10,color:i===0?"rgba(255,255,255,.8)":"rgba(255,255,255,.3)",padding:"1px 0"}}>{l}</div>)}</div>}</div>);
 
-  /* ══════════════════════════════════════════════════════════
-     DESKTOP X LAYOUT
-     
-     Key technique: use a SINGLE CSS Grid for the entire board.
-     This allows the FINAL box to span rows 1 and 2 natively.
-     
-     Grid: 7 columns × 2 rows
-     Col layout: [lbl] [4fields] [theme] [FINAL] [theme] [4fields] [lbl]
-     FINAL spans gridRow: 1/3
-     
-     Height: flex:1 + minHeight:0 makes the grid expand.
-     Rows: gridTemplateRows:"1fr 1fr" divides height equally.
-     Fields in sub-grids get height:"100%" which works because
-     the sub-grid itself has height:"100%" within its grid cell.
-  ══════════════════════════════════════════════════════════ */
   if(isDesktop){
-    /*
-      NEW X LAYOUT:
-      
-      A1──                          ──B1
-        A2──                    ──B2
-          A3──              ──B3
-            A4──          ──B4
-            ThA──        ──ThB      ← theme inputs INSIDE arms, below A4/B4
-                  [FINAL]
-            ThC──        ──ThD      ← theme inputs INSIDE arms, above C1/D1
-            C1──          ──D1
-          C2──              ──D2
-        C3──                    ──D3
-      C4──                          ──D4
-      
-      All fields (A1-D4 AND theme inputs) = same width FW, same aspect-ratio 4:1
-    */
-
-    const FW = "15vw";    // all fields same width
-    const AR = "4/1";     // aspect ratio 4:1 for all
-    const STP = 1.0;      // vw step per field
+    const FW = "15vw";
+    const AR = "4/1";
+    const STP = 1.0;
     const G = 3;
 
-    // Unified field style — same size for game fields AND theme inputs
     const fieldBase = {
       width: FW,
       aspectRatio: AR,
@@ -705,7 +666,6 @@ export default function App(){
       userSelect: "none",
     };
 
-    // Game field
     const XFld = ({field, st, sb, canOpen}) => {
       const bg = st==="solved"?(sb==="p1"?PC1:PC2):st==="clue"?"#c47d0e":canOpen?"#2d5a8a":"#1e3a5a";
       const s = {...fieldBase, background:bg, border:st==="clue"?"2px solid #f59e0b":st==="solved"?"none":canOpen?"1px solid rgba(0,255,255,0.5)":"1px solid #1a2a3a", boxShadow:canOpen&&st==="hidden"?"0 0 0.8vw 0.15vw rgba(0,255,255,0.35)":st==="solved"?"0 3px 0 rgba(0,0,0,.4)":"none", cursor:canOpen&&st==="hidden"?"pointer":"default"};
@@ -714,7 +674,6 @@ export default function App(){
       return <div style={s} onClick={canOpen?()=>doOpen(field.id):undefined} onMouseEnter={e=>{if(canOpen){e.currentTarget.style.background="rgba(0,40,60,0.95)";e.currentTarget.style.boxShadow="0 0 1vw 0.25vw rgba(0,255,255,0.6)";}}} onMouseLeave={e=>{if(canOpen){e.currentTarget.style.background="#2d5a8a";e.currentTarget.style.boxShadow="0 0 0.8vw 0.15vw rgba(0,255,255,0.35)";}}}><span style={{fontSize:"clamp(9px,1vw,16px)",fontWeight:900,color:canOpen?"rgba(0,255,255,0.85)":"#1a2a3a",letterSpacing:1}}>{field.id}</span></div>;
     };
 
-    // Theme input — uses App-level state (dtCol/dtVal/dtErr) so remounts don't wipe input
     const XTh = ({cid, solved, solvedBy, theme, disabled, onGuess}) => {
       const isActive = dtCol === cid;
       const sc = solvedBy==="p1"?PC1:PC2;
@@ -738,74 +697,48 @@ export default function App(){
 
     return(
       <div style={{...ROOT,position:"relative"}}><style>{CSS}</style>
-      {/* ENDING OVERLAY */}
       {ending&&<EndOverlay cd={endCd} winner={winner} myRole={myRole} p1name={gs?.p1name} p2name={gs?.p2name} scores={gs?.scores||{p1:0,p2:0}} wager={wager} board={board}/>}
       {SB}
       <div style={{flex:1,padding:"4px 12px 4px",display:"flex",flexDirection:"column",overflow:"hidden"}}>
-
         <div style={{display:"flex",gap:"2vw",alignItems:"center",flex:1,minHeight:0}}>
-
-          {/* ── LEFT ARM: A column (top) + C column (bottom) ── */}
           <div style={{flex:"0 0 22vw",display:"flex",flexDirection:"column",justifyContent:"center",gap:G}}>
-
-            {/* A1 → A4 → ThemeA (cascade right, ThemeA same indent as A4) */}
             {colA.fields.map((f,i)=>{
               const{st,sb}=fst(f.id);
               return <div key={f.id} style={{marginLeft:`${i*STP}vw`}}><XFld field={f} st={st} sb={sb} canOpen={canOpen&&st==="hidden"}/></div>;
             })}
-            {/* ThemeA directly below A4 — same indent as A4 (3 steps) */}
             <div style={{marginLeft:`${3*STP}vw`}}>
               <XTh cid="A" solved={!!colSolved.A} solvedBy={colSolved.A} theme={colA.theme} disabled={!canGuess} onGuess={v=>doGuessCol("A",v)}/>
             </div>
-
-            {/* Spacer between A and C */}
             <div style={{height:G*2}}/>
-
-            {/* ThemeC directly above C1 — same indent as C1 (3 steps) */}
             <div style={{marginLeft:`${3*STP}vw`}}>
               <XTh cid="C" solved={!!colSolved.C} solvedBy={colSolved.C} theme={colC.theme} disabled={!canGuess} onGuess={v=>doGuessCol("C",v)}/>
             </div>
-            {/* C1(max indent) → C4(no indent) cascade left */}
             {colC.fields.map((f,i)=>{
               const{st,sb}=fst(f.id);
               return <div key={f.id} style={{marginLeft:`${(3-i)*STP}vw`}}><XFld field={f} st={st} sb={sb} canOpen={canOpen&&st==="hidden"}/></div>;
             })}
           </div>
-
-          {/* ── CENTER: only FINAL answer ── */}
           <div style={{flex:"0 0 12vw",display:"flex",alignItems:"center",justifyContent:"center"}}>
             <FIn solved={!!finalSolved} solvedBy={finalSolved} answer={board.final.answer} disabled={!canGuess} onGuess={doGuessFinal} h={"min(3.5vw, 5vh)"}/>
           </div>
-
-          {/* ── RIGHT ARM: B column (top) + D column (bottom) ── */}
           <div style={{flex:"0 0 22vw",display:"flex",flexDirection:"column",justifyContent:"center",gap:G,alignItems:"flex-end"}}>
-
-            {/* B1 → B4 → ThemeB (cascade left from right, ThemeB same indent as B4) */}
             {colB.fields.map((f,i)=>{
               const{st,sb}=fst(f.id);
               return <div key={f.id} style={{marginRight:`${i*STP}vw`}}><XFld field={f} st={st} sb={sb} canOpen={canOpen&&st==="hidden"}/></div>;
             })}
-            {/* ThemeB directly below B4 — same indent as B4 */}
             <div style={{marginRight:`${3*STP}vw`}}>
               <XTh cid="B" solved={!!colSolved.B} solvedBy={colSolved.B} theme={colB.theme} disabled={!canGuess} onGuess={v=>doGuessCol("B",v)}/>
             </div>
-
-            {/* Spacer between B and D */}
             <div style={{height:G*2}}/>
-
-            {/* ThemeD directly above D1 — same indent as D1 */}
             <div style={{marginRight:`${3*STP}vw`}}>
               <XTh cid="D" solved={!!colSolved.D} solvedBy={colSolved.D} theme={colD.theme} disabled={!canGuess} onGuess={v=>doGuessCol("D",v)}/>
             </div>
-            {/* D1(max indent) → D4(no indent) cascade right */}
             {colD.fields.map((f,i)=>{
               const{st,sb}=fst(f.id);
               return <div key={f.id} style={{marginRight:`${(3-i)*STP}vw`}}><XFld field={f} st={st} sb={sb} canOpen={canOpen&&st==="hidden"}/></div>;
             })}
           </div>
         </div>
-
-        {/* LOG + STATUS */}
         <div style={{flexShrink:0,paddingTop:4}}>
           {PL}
           <div style={{textAlign:"center",fontSize:9,color:"rgba(0,255,180,.5)",letterSpacing:1,marginTop:2}}>
@@ -818,7 +751,6 @@ export default function App(){
     );
   }
 
-  /* MOBILE — unchanged */
   return(
     <div style={{...ROOT,position:"relative"}}><style>{CSS}</style>
     {ending&&<EndOverlay cd={endCd} winner={winner} myRole={myRole} p1name={gs?.p1name} p2name={gs?.p2name} scores={gs?.scores||{p1:0,p2:0}} wager={wager} board={board}/>}
