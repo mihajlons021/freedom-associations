@@ -249,6 +249,8 @@ function gid(){return Math.random().toString(36).slice(2,8).toUpperCase();}
 async function phantom(){try{if(!window.solana?.isPhantom){window.open("https://phantom.app/","_blank");return null;}return(await window.solana.connect()).publicKey.toString();}catch{return null;}}
 
 async function sendWager(fromWalletStr, amount) {
+  // DEPOSITS_PAUSED (2026-11-06): wagers paused while payouts are locked.
+  return { ok: false, err: "Deposits are temporarily paused for maintenance. No tokens were sent. Please try again later." };
   try {
     if (!window.solana?.isPhantom) return { ok: false, err: "Phantom not found" };
     const msg = new TextEncoder().encode(`FREEDOM Associations wager: ${amount} tokens from ${fromWalletStr}`);
