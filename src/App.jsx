@@ -1,789 +1,467 @@
-/* eslint-disable */
-import { Buffer } from "buffer";
-window.Buffer = window.Buffer || Buffer;
-import { useState, useEffect, useRef } from "react";
+/* eslint-disable react-hooks/exhaustive-deps */
+import { useState, useEffect, useRef, useCallback } from "react";
 import { initializeApp } from "firebase/app";
-import { getDatabase, ref, set, get, update, onValue } from "firebase/database";
-import { Connection, PublicKey, Transaction } from "@solana/web3.js";
-import { getAssociatedTokenAddress, createTransferInstruction, TOKEN_PROGRAM_ID } from "@solana/spl-token";
+import { getDatabase, ref, set, get, onValue, runTransaction, remove } from "firebase/database";
+import { BOARDS } from "./boards";
+import * as G from "./logic";
+import { boot, menuMusic, gameMusic, isMuted, setMuted, onMute, sfx } from "./audio";
 
-const FB = { apiKey:"AIzaSyAKmKRj7Hhy4K6DsY_XDbqLb3oYOwZC5jw", authDomain:"project-freedom-a004e.firebaseapp.com", databaseURL:"https://project-freedom-a004e-default-rtdb.firebaseio.com", projectId:"project-freedom-a004e", storageBucket:"project-freedom-a004e.firebasestorage.app", messagingSenderId:"844172246267", appId:"1:844172246267:web:a31b8cd6affe8337f7845e" };
-let db; try { db = getDatabase(initializeApp(FB)); } catch(e) {}
+const FB = { apiKey: "AIzaSyAKmKRj7Hhy4K6DsY_XDbqLb3oYOwZC5jw", authDomain: "project-freedom-a004e.firebaseapp.com", databaseURL: "https://project-freedom-a004e-default-rtdb.firebaseio.com", projectId: "project-freedom-a004e", storageBucket: "project-freedom-a004e.firebasestorage.app", messagingSenderId: "844172246267", appId: "1:844172246267:web:a31b8cd6affe8337f7845e" };
+let db = null; try { db = getDatabase(initializeApp(FB)); } catch (e) {}
 
-function getUid() {
-  try {
-    let id = localStorage.getItem("_pgf");
-    if (!id) { id = "u" + Date.now().toString(36) + Math.random().toString(36).slice(2); localStorage.setItem("_pgf", id); }
-    return id;
-  } catch { return "u" + Math.random().toString(36).slice(2,14); }
-}
+const uid = (() => { try { let id = localStorage.getItem("_pgf"); if (!id) { id = "u" + Date.now().toString(36) + Math.random().toString(36).slice(2); localStorage.setItem("_pgf", id); } return id; } catch { return "u" + Math.random().toString(36).slice(2); } })();
+const roomCode = () => Array.from({ length: 6 }, () => "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"[Math.floor(Math.random() * 32)]).join("");
+const BOT_NAMES = ["Nova", "Echo", "Pixel", "Luna", "Atlas"];
 
-const ESCROW = "GynyDkXj8WVdP7XDL1nTekF7Azv7ebxA7RCMnY3a3tSu";
-const FREEDOM_MINT = "DGNPSiTrX5xnKcpVKBaXUsWBZbFuA2cJcb7fUJmoAJrd";
-const TOKEN_DECIMALS = 6;
-const HELIUS_RPC = "https://mainnet.helius-rpc.com/?api-key=45c09379-40fc-49f0-93a0-733d9d41d1a4";
-const WAGERS = [100,500,1000];
-const TSEC=30, ISEC=60;
-const PC1="#e53935", PC2="#1e88e5";
+/* ============================== ROOT ============================== */
+export default function App() {
+  const [screen, setScreen] = useState("lobby");      // lobby | waiting | game
+  const [name, setName] = useState(() => { try { return localStorage.getItem("as_name") || ""; } catch { return ""; } });
+  const [mode, setMode] = useState(null);             // practice | friend
+  const [roomId, setRoomId] = useState(null);
+  const [role, setRole] = useState("p1");
+  const [local, setLocal] = useState(null);           // practice state
+  const [remote, setRemote] = useState(null);         // friend state (from Firebase)
+  const [err, setErr] = useState("");
 
-const B = [
-  /* 0 */ { columns:[
-    {id:"A",theme:"BRIDGES",fields:[{id:"A1",clue:"London drawbridge",answer:"TOWERBRIDGE"},{id:"A2",clue:"San Francisco icon",answer:"GOLDENGATE"},{id:"A3",clue:"Venice marble",answer:"RIALTO"},{id:"A4",clue:"Brooklyn NY",answer:"BROOKLYN"}]},
-    {id:"B",theme:"MUSIC GENRES",fields:[{id:"B1",clue:"Jamaica rhythm",answer:"REGGAE"},{id:"B2",clue:"Electronic dance",answer:"TECHNO"},{id:"B3",clue:"Guitar & rebellion",answer:"PUNK"},{id:"B4",clue:"Piano & blues",answer:"JAZZ"}]},
-    {id:"C",theme:"ANCIENT EMPIRES",fields:[{id:"C1",clue:"Rome's peak power",answer:"ROMAN"},{id:"C2",clue:"Egypt pharaohs",answer:"EGYPTIAN"},{id:"C3",clue:"Greece city-states",answer:"GREEK"},{id:"C4",clue:"Genghis Khan",answer:"MONGOL"}]},
-    {id:"D",theme:"CODE LANGUAGES",fields:[{id:"D1",clue:"Snake language",answer:"PYTHON"},{id:"D2",clue:"Coffee language",answer:"JAVA"},{id:"D3",clue:"Web trio front",answer:"JAVASCRIPT"},{id:"D4",clue:"Low level fast",answer:"C"}]},
-  ], final:{answer:"CIVILIZATION",hint:"Human achievement"} },
+  useEffect(() => { boot(); }, []);
+  useEffect(() => { if (screen === "game") gameMusic(); else menuMusic(); }, [screen]);
+  useEffect(() => { try { localStorage.setItem("as_name", name); } catch {} }, [name]);
 
-  /* 1 */ { columns:[
-    {id:"A",theme:"FAMOUS AUTHORS",fields:[{id:"A1",clue:"To Kill Mockingbird",answer:"LEEHARPER"},{id:"A2",clue:"1984 & Big Brother",answer:"ORWELL"},{id:"A3",clue:"Don Quixote",answer:"CERVANTES"},{id:"A4",clue:"War & Peace",answer:"TOLSTOY"}]},
-    {id:"B",theme:"NATURAL DISASTERS",fields:[{id:"B1",clue:"Ring of fire shaker",answer:"EARTHQUAKE"},{id:"B2",clue:"Sea surge wave",answer:"TSUNAMI"},{id:"B3",clue:"Funnel wind vortex",answer:"TORNADO"},{id:"B4",clue:"Lava mountain",answer:"VOLCANO"}]},
-    {id:"C",theme:"CONSTELLATIONS",fields:[{id:"C1",clue:"Hunter in the sky",answer:"ORION"},{id:"C2",clue:"Bear in the north",answer:"URSAMAJOR"},{id:"C3",clue:"Southern cross",answer:"CRUX"},{id:"C4",clue:"Zodiac water bearer",answer:"AQUARIUS"}]},
-    {id:"D",theme:"FAMOUS OPERAS",fields:[{id:"D1",clue:"Phantom of the",answer:"PHANTOM"},{id:"D2",clue:"Verdi's slave princess",answer:"AIDA"},{id:"D3",clue:"Butterfly Japan",answer:"MADAMA"},{id:"D4",clue:"Don Giovanni Mozart",answer:"DONGIOVANNI"}]},
-  ], final:{answer:"CULTURE",hint:"Art of civilization"} },
+  // live room
+  useEffect(() => {
+    if (!roomId || !db) return;
+    return onValue(ref(db, "games/" + roomId), s => {
+      const d = s.val(); if (!d) return;
+      setRemote(d);
+      if (d.status !== "waiting") setScreen(sc => (sc === "waiting" ? "game" : sc));
+    });
+  }, [roomId]);
 
-  /* 2 */ { columns:[
-    {id:"A",theme:"SPACE AGENCIES",fields:[{id:"A1",clue:"USA rockets",answer:"NASA"},{id:"A2",clue:"Europe rockets",answer:"ESA"},{id:"A3",clue:"Russia rockets",answer:"ROSCOSMOS"},{id:"A4",clue:"China rockets",answer:"CNSA"}]},
-    {id:"B",theme:"NATIONAL PARKS",fields:[{id:"B1",clue:"USA grand canyon",answer:"GRANDCANYON"},{id:"B2",clue:"Geysers USA",answer:"YELLOWSTONE"},{id:"B3",clue:"Serengeti Tanzania",answer:"SERENGETI"},{id:"B4",clue:"Amazon rainforest",answer:"AMAZON"}]},
-    {id:"C",theme:"FAMOUS SPEECHES",fields:[{id:"C1",clue:"I have a dream",answer:"MLKJUNIOR"},{id:"C2",clue:"We shall fight beaches",answer:"CHURCHILL"},{id:"C3",clue:"Ask not what country",answer:"KENNEDY"},{id:"C4",clue:"Gettysburg address",answer:"LINCOLN"}]},
-    {id:"D",theme:"CRYPTO COINS",fields:[{id:"D1",clue:"First crypto",answer:"BITCOIN"},{id:"D2",clue:"Smart contracts",answer:"ETHEREUM"},{id:"D3",clue:"Meme dog coin",answer:"DOGECOIN"},{id:"D4",clue:"Fastest blockchain",answer:"SOLANA"}]},
-  ], final:{answer:"FRONTIER",hint:"Edge of the known"} },
+  const me = () => ({ id: uid, name: (name.trim() || "Player").slice(0, 16) });
 
-  /* 3 */ { columns:[
-    {id:"A",theme:"MARTIAL ARTS",fields:[{id:"A1",clue:"Japanese throws",answer:"JUDO"},{id:"A2",clue:"Korean kicks",answer:"TAEKWONDO"},{id:"A3",clue:"Brazilian ground",answer:"BJJ"},{id:"A4",clue:"Chinese strikes",answer:"KUNGFU"}]},
-    {id:"B",theme:"PRECIOUS METALS",fields:[{id:"B1",clue:"Olympic gold",answer:"GOLD"},{id:"B2",clue:"Olympic silver",answer:"SILVER"},{id:"B3",clue:"Wedding ring metal",answer:"PLATINUM"},{id:"B4",clue:"Olympic bronze",answer:"BRONZE"}]},
-    {id:"C",theme:"CHEESES",fields:[{id:"C1",clue:"Italian hard pasta",answer:"PARMESAN"},{id:"C2",clue:"French soft white",answer:"BRIE"},{id:"C3",clue:"Blue veiny Italian",answer:"GORGONZOLA"},{id:"C4",clue:"Stretchy pizza top",answer:"MOZZARELLA"}]},
-    {id:"D",theme:"DETECTIVES",fields:[{id:"D1",clue:"221B Baker Street",answer:"HOLMES"},{id:"D2",clue:"Belgian mustache",answer:"POIROT"},{id:"D3",clue:"Little old lady",answer:"MARPLE"},{id:"D4",clue:"Trench coat Columbo",answer:"COLUMBO"}]},
-  ], final:{answer:"MASTERY",hint:"Expert skill"} },
-
-  /* 4 */ { columns:[
-    {id:"A",theme:"ART MOVEMENTS",fields:[{id:"A1",clue:"Monet & water lily",answer:"IMPRESSIONISM"},{id:"A2",clue:"Picasso distorted",answer:"CUBISM"},{id:"A3",clue:"Dali melting clocks",answer:"SURREALISM"},{id:"A4",clue:"Bold colors Matisse",answer:"FAUVISM"}]},
-    {id:"B",theme:"FAMOUS QUOTES",fields:[{id:"B1",clue:"Carpe diem seize",answer:"HORACE"},{id:"B2",clue:"Cogito ergo sum",answer:"DESCARTES"},{id:"B3",clue:"To be or not to be",answer:"SHAKESPEARE"},{id:"B4",clue:"Power tends corrupt",answer:"ACTON"}]},
-    {id:"C",theme:"WINE REGIONS",fields:[{id:"C1",clue:"Bordeaux France",answer:"BORDEAUX"},{id:"C2",clue:"Tuscany Italy",answer:"TUSCANY"},{id:"C3",clue:"Mendoza Argentina",answer:"MENDOZA"},{id:"C4",clue:"Napa California",answer:"NAPA"}]},
-    {id:"D",theme:"FAMOUS RACES",fields:[{id:"D1",clue:"Monaco F1 street",answer:"MONACO"},{id:"D2",clue:"Le Mans 24hr",answer:"LEMANS"},{id:"D3",clue:"Boston marathon",answer:"BOSTON"},{id:"D4",clue:"Tour de France",answer:"TOUR"}]},
-  ], final:{answer:"PASSION",hint:"Deep driving force"} },
-
-  /* 5 */ { columns:[
-    {id:"A",theme:"GREEK GODS",fields:[{id:"A1",clue:"King of gods",answer:"ZEUS"},{id:"A2",clue:"Sea trident god",answer:"POSEIDON"},{id:"A3",clue:"Underworld god",answer:"HADES"},{id:"A4",clue:"War god",answer:"ARES"}]},
-    {id:"B",theme:"ELEMENTS",fields:[{id:"B1",clue:"Periodic table 1",answer:"HYDROGEN"},{id:"B2",clue:"Bling bling metal",answer:"GOLD"},{id:"B3",clue:"We breathe it",answer:"OXYGEN"},{id:"B4",clue:"Diamond material",answer:"CARBON"}]},
-    {id:"C",theme:"FAMOUS QUOTES 2",fields:[{id:"C1",clue:"Elementary my dear",answer:"HOLMES"},{id:"C2",clue:"May the force be",answer:"STARWARS"},{id:"C3",clue:"I'll be back",answer:"TERMINATOR"},{id:"C4",clue:"You can't handle",answer:"FEWGOODMEN"}]},
-    {id:"D",theme:"BOARD GAMES",fields:[{id:"D1",clue:"32 piece board",answer:"CHESS"},{id:"D2",clue:"Buy & rent property",answer:"MONOPOLY"},{id:"D3",clue:"Stack & topple",answer:"JENGA"},{id:"D4",clue:"Words on board",answer:"SCRABBLE"}]},
-  ], final:{answer:"LEGACY",hint:"What you leave behind"} },
-
-  /* 6 */ { columns:[
-    {id:"A",theme:"RIVERS",fields:[{id:"A1",clue:"Egypt's lifeline",answer:"NILE"},{id:"A2",clue:"Through Paris",answer:"SEINE"},{id:"A3",clue:"China's sorrow",answer:"YANGTZE"},{id:"A4",clue:"India's sacred",answer:"GANGES"}]},
-    {id:"B",theme:"MINERALS",fields:[{id:"B1",clue:"Pink quartz love",answer:"ROSEQUARTZ"},{id:"B2",clue:"Purple crystal",answer:"AMETHYST"},{id:"B3",clue:"Black volcanic blade",answer:"OBSIDIAN"},{id:"B4",clue:"Green malachite",answer:"MALACHITE"}]},
-    {id:"C",theme:"CURRENCIES",fields:[{id:"C1",clue:"USA dollar sign",answer:"DOLLAR"},{id:"C2",clue:"European money",answer:"EURO"},{id:"C3",clue:"Japan money",answer:"YEN"},{id:"C4",clue:"UK money",answer:"POUND"}]},
-    {id:"D",theme:"COCKTAILS",fields:[{id:"D1",clue:"James Bond's pick",answer:"MARTINI"},{id:"D2",clue:"Rum & mint leaves",answer:"MOJITO"},{id:"D3",clue:"Tequila & lime",answer:"MARGARITA"},{id:"D4",clue:"Coconut & rum cream",answer:"PINACOLADA"}]},
-  ], final:{answer:"CLASSIC",hint:"Timeless and enduring"} },
-
-  /* 7 */ { columns:[
-    {id:"A",theme:"FASHION HOUSES",fields:[{id:"A1",clue:"French CC double",answer:"CHANEL"},{id:"A2",clue:"Italian LV bags",answer:"VUITTON"},{id:"A3",clue:"Italian Gucci",answer:"GUCCI"},{id:"A4",clue:"Italian Prada",answer:"PRADA"}]},
-    {id:"B",theme:"PHOBIAS",fields:[{id:"B1",clue:"Fear of heights",answer:"ACROPHOBIA"},{id:"B2",clue:"Fear of spiders",answer:"ARACHNOPHOBIA"},{id:"B3",clue:"Fear of flying",answer:"AVIOPHOBIA"},{id:"B4",clue:"Fear of open spaces",answer:"AGORAPHOBIA"}]},
-    {id:"C",theme:"FAMOUS SHIPS",fields:[{id:"C1",clue:"Iceberg disaster",answer:"TITANIC"},{id:"C2",clue:"Columbus flagship",answer:"SANTAMARIA"},{id:"C3",clue:"Star Trek starship",answer:"ENTERPRISE"},{id:"C4",clue:"Pirate legendary",answer:"BLACKPEARL"}]},
-    {id:"D",theme:"TECH GIANTS",fields:[{id:"D1",clue:"Bitten apple logo",answer:"APPLE"},{id:"D2",clue:"Search engine giant",answer:"GOOGLE"},{id:"D3",clue:"Social network",answer:"FACEBOOK"},{id:"D4",clue:"Everything store",answer:"AMAZON"}]},
-  ], final:{answer:"POWER",hint:"Force that shapes the world"} },
-
-  /* 8 */ { columns:[
-    {id:"A",theme:"MEDIEVAL",fields:[{id:"A1",clue:"Armor clad warrior",answer:"KNIGHT"},{id:"A2",clue:"Fire breathing beast",answer:"DRAGON"},{id:"A3",clue:"Magic spell caster",answer:"WIZARD"},{id:"A4",clue:"Stone fortress home",answer:"CASTLE"}]},
-    {id:"B",theme:"SPACE MISSIONS",fields:[{id:"B1",clue:"Moon landing 1969",answer:"APOLLO"},{id:"B2",clue:"Space telescope",answer:"HUBBLE"},{id:"B3",clue:"Mars rover NASA",answer:"CURIOSITY"},{id:"B4",clue:"First satellite USSR",answer:"SPUTNIK"}]},
-    {id:"C",theme:"WORLD RECORDS",fields:[{id:"C1",clue:"Tallest building",answer:"BURJKHALIFA"},{id:"C2",clue:"Longest river",answer:"NILE"},{id:"C3",clue:"Deepest ocean",answer:"MARIANATRENCH"},{id:"C4",clue:"Largest desert",answer:"SAHARA"}]},
-    {id:"D",theme:"FAMOUS DUOS",fields:[{id:"D1",clue:"Batman and",answer:"ROBIN"},{id:"D2",clue:"Tom and",answer:"JERRY"},{id:"D3",clue:"Sherlock and Watson",answer:"WATSON"},{id:"D4",clue:"Mario and",answer:"LUIGI"}]},
-  ], final:{answer:"EPIC",hint:"Larger than life"} },
-
-  /* 9 */ { columns:[
-    {id:"A",theme:"PLANETS",fields:[{id:"A1",clue:"Red planet",answer:"MARS"},{id:"A2",clue:"Ringed giant",answer:"SATURN"},{id:"A3",clue:"Morning star",answer:"VENUS"},{id:"A4",clue:"Blue ice giant",answer:"NEPTUNE"}]},
-    {id:"B",theme:"CAPITALS",fields:[{id:"B1",clue:"Eiffel Tower city",answer:"PARIS"},{id:"B2",clue:"Rising sun capital",answer:"TOKYO"},{id:"B3",clue:"Thames River city",answer:"LONDON"},{id:"B4",clue:"Vatican neighbour",answer:"ROME"}]},
-    {id:"C",theme:"SUPERHEROES",fields:[{id:"C1",clue:"Web slinger",answer:"SPIDERMAN"},{id:"C2",clue:"Dark knight",answer:"BATMAN"},{id:"C3",clue:"Iron suit billionaire",answer:"IRONMAN"},{id:"C4",clue:"Super soldier",answer:"CAPTAIN"}]},
-    {id:"D",theme:"OCEANS",fields:[{id:"D1",clue:"World's biggest",answer:"PACIFIC"},{id:"D2",clue:"Titanic sank here",answer:"ATLANTIC"},{id:"D3",clue:"Between continents",answer:"INDIAN"},{id:"D4",clue:"North polar sea",answer:"ARCTIC"}]},
-  ], final:{answer:"WORLD",hint:"The big picture"} },
-
-  /* 10 */ { columns:[
-    {id:"A",theme:"CARS",fields:[{id:"A1",clue:"Italian stallion",answer:"FERRARI"},{id:"A2",clue:"German luxury",answer:"BMW"},{id:"A3",clue:"Electric pioneer",answer:"TESLA"},{id:"A4",clue:"Japanese reliable",answer:"TOYOTA"}]},
-    {id:"B",theme:"MOUNTAINS",fields:[{id:"B1",clue:"World's highest",answer:"EVEREST"},{id:"B2",clue:"Swiss Alps icon",answer:"MATTERHORN"},{id:"B3",clue:"Africa's roof",answer:"KILIMANJARO"},{id:"B4",clue:"Japan's sacred peak",answer:"FUJI"}]},
-    {id:"C",theme:"DANCES",fields:[{id:"C1",clue:"Argentine passion",answer:"TANGO"},{id:"C2",clue:"Cuban rhythm",answer:"SALSA"},{id:"C3",clue:"Spanish style",answer:"FLAMENCO"},{id:"C4",clue:"Hawaiian hips",answer:"HULA"}]},
-    {id:"D",theme:"RIVERS 2",fields:[{id:"D1",clue:"Rome's river",answer:"TIBER"},{id:"D2",clue:"Vienna's blue river",answer:"DANUBE"},{id:"D3",clue:"Russia's longest",answer:"VOLGA"},{id:"D4",clue:"Jungle river",answer:"AMAZON"}]},
-  ], final:{answer:"JOURNEY",hint:"About movement"} },
-
-  /* 11 */ { columns:[
-    {id:"A",theme:"GEMS",fields:[{id:"A1",clue:"Hardest gem",answer:"DIAMOND"},{id:"A2",clue:"Red passion gem",answer:"RUBY"},{id:"A3",clue:"Blue royal gem",answer:"SAPPHIRE"},{id:"A4",clue:"Green forest gem",answer:"EMERALD"}]},
-    {id:"B",theme:"COMPOSERS",fields:[{id:"B1",clue:"Fifth symphony",answer:"BEETHOVEN"},{id:"B2",clue:"Four seasons",answer:"VIVALDI"},{id:"B3",clue:"Magic flute",answer:"MOZART"},{id:"B4",clue:"G string air",answer:"BACH"}]},
-    {id:"C",theme:"SCIENTISTS",fields:[{id:"C1",clue:"Gravity & apple",answer:"NEWTON"},{id:"C2",clue:"Relativity theory",answer:"EINSTEIN"},{id:"C3",clue:"Evolution theory",answer:"DARWIN"},{id:"C4",clue:"Radium & polonium",answer:"CURIE"}]},
-    {id:"D",theme:"PHILOSOPHERS",fields:[{id:"D1",clue:"I think therefore",answer:"DESCARTES"},{id:"D2",clue:"Cave allegory",answer:"PLATO"},{id:"D3",clue:"Golden mean",answer:"ARISTOTLE"},{id:"D4",clue:"Thus spoke Z",answer:"NIETZSCHE"}]},
-  ], final:{answer:"GENIUS",hint:"Intelligence at its finest"} },
-
-  /* 12 */ { columns:[
-    {id:"A",theme:"LANGUAGES",fields:[{id:"A1",clue:"Most speakers",answer:"MANDARIN"},{id:"A2",clue:"Shakespeare wrote",answer:"ENGLISH"},{id:"A3",clue:"Cervantes wrote",answer:"SPANISH"},{id:"A4",clue:"Language of love",answer:"FRENCH"}]},
-    {id:"B",theme:"MOVIES",fields:[{id:"B1",clue:"Simba's story",answer:"LIONKING"},{id:"B2",clue:"Force & Jedi",answer:"STARWARS"},{id:"B3",clue:"One ring quest",answer:"LOTR"},{id:"B4",clue:"Blue alien planet",answer:"AVATAR"}]},
-    {id:"C",theme:"SPORTS TEAMS",fields:[{id:"C1",clue:"NY pinstripes",answer:"YANKEES"},{id:"C2",clue:"Chicago red bulls",answer:"BULLS"},{id:"C3",clue:"Manchester red devils",answer:"UNITED"},{id:"C4",clue:"LA purple & gold",answer:"LAKERS"}]},
-    {id:"D",theme:"DESSERTS",fields:[{id:"D1",clue:"Italian ice cream",answer:"GELATO"},{id:"D2",clue:"French choux pastry",answer:"ECLAIR"},{id:"D3",clue:"Chocolate fudge square",answer:"BROWNIE"},{id:"D4",clue:"Italian coffee cake",answer:"TIRAMISU"}]},
-  ], final:{answer:"ENTERTAINMENT",hint:"Fun & pleasure"} },
-
-  /* 13 */ { columns:[
-    {id:"A",theme:"US STATES",fields:[{id:"A1",clue:"Golden Gate state",answer:"CALIFORNIA"},{id:"A2",clue:"Lone Star state",answer:"TEXAS"},{id:"A3",clue:"Empire state",answer:"NEWYORK"},{id:"A4",clue:"Sunshine state",answer:"FLORIDA"}]},
-    {id:"B",theme:"DINOSAURS",fields:[{id:"B1",clue:"Tyrant lizard king",answer:"TREX"},{id:"B2",clue:"Three horned face",answer:"TRICERATOPS"},{id:"B3",clue:"Long neck plant eater",answer:"BRACHIOSAURUS"},{id:"B4",clue:"Clever pack hunter",answer:"RAPTOR"}]},
-    {id:"C",theme:"WINTER SPORTS",fields:[{id:"C1",clue:"Two planks downhill",answer:"SKIING"},{id:"C2",clue:"One board downhill",answer:"SNOWBOARD"},{id:"C3",clue:"Ice spinning jumps",answer:"SKATING"},{id:"C4",clue:"Broom on ice",answer:"CURLING"}]},
-    {id:"D",theme:"ARTISTS",fields:[{id:"D1",clue:"Mona Lisa painter",answer:"DAVINCI"},{id:"D2",clue:"Sunflowers painter",answer:"VANGOGH"},{id:"D3",clue:"Cubism founder",answer:"PICASSO"},{id:"D4",clue:"Sistine chapel",answer:"MICHELANGELO"}]},
-  ], final:{answer:"AMERICA",hint:"The new world"} },
-
-  /* 14 */ { columns:[
-    {id:"A",theme:"VOLCANOES",fields:[{id:"A1",clue:"Sicily fire mountain",answer:"ETNA"},{id:"A2",clue:"Pompeii destroyer",answer:"VESUVIUS"},{id:"A3",clue:"Hawaii's fire",answer:"KILAUEA"},{id:"A4",clue:"Indonesia Krakatoa",answer:"KRAKATOA"}]},
-    {id:"B",theme:"SPICES",fields:[{id:"B1",clue:"Yellow warm powder",answer:"TURMERIC"},{id:"B2",clue:"Vampire repellent",answer:"GARLIC"},{id:"B3",clue:"Red festive spice",answer:"PAPRIKA"},{id:"B4",clue:"Sweet roll spice",answer:"CINNAMON"}]},
-    {id:"C",theme:"CLOUD TYPES",fields:[{id:"C1",clue:"Fluffy cotton balls",answer:"CUMULUS"},{id:"C2",clue:"Thin high streaks",answer:"CIRRUS"},{id:"C3",clue:"Gray rain layer",answer:"STRATUS"},{id:"C4",clue:"Storm tower dark",answer:"CUMULONIMBUS"}]},
-    {id:"D",theme:"FAMOUS BATTLES",fields:[{id:"D1",clue:"Napoleon's defeat",answer:"WATERLOO"},{id:"D2",clue:"Sparta 300",answer:"THERMOPYLAE"},{id:"D3",clue:"D-Day beaches",answer:"NORMANDY"},{id:"D4",clue:"Naval victory",answer:"TRAFALGAR"}]},
-  ], final:{answer:"EARTH",hint:"Our planet"} },
-
-  /* 15 */ { columns:[
-    {id:"A",theme:"ARCHITECTURE STYLES",fields:[{id:"A1",clue:"Pointed arches gothic",answer:"GOTHIC"},{id:"A2",clue:"Roman arches revival",answer:"ROMANESQUE"},{id:"A3",clue:"Steel & glass modern",answer:"MODERNIST"},{id:"A4",clue:"Ancient columns",answer:"CLASSICAL"}]},
-    {id:"B",theme:"FAMOUS SCIENTISTS 2",fields:[{id:"B1",clue:"Electric lightning rod",answer:"FRANKLIN"},{id:"B2",clue:"Periodic table",answer:"MENDELEEV"},{id:"B3",clue:"Quantum physics",answer:"BOHR"},{id:"B4",clue:"DNA double helix",answer:"WATSON"}]},
-    {id:"C",theme:"DANCES 2",fields:[{id:"C1",clue:"Brazilian Carnival",answer:"SAMBA"},{id:"C2",clue:"Irish quick step",answer:"JIVE"},{id:"C3",clue:"Slow romantic",answer:"WALTZ"},{id:"C4",clue:"Street hip hop",answer:"BREAKDANCE"}]},
-    {id:"D",theme:"POKER HANDS",fields:[{id:"D1",clue:"Five same suit",answer:"ROYALFLUSH"},{id:"D2",clue:"Four same rank",answer:"FOUROFAKIND"},{id:"D3",clue:"Three + pair",answer:"FULLHOUSE"},{id:"D4",clue:"Two same rank",answer:"PAIR"}]},
-  ], final:{answer:"GAME",hint:"Play and competition"} },
-
-  /* 16 */ { columns:[
-    {id:"A",theme:"ASTRONOMY",fields:[{id:"A1",clue:"Milky Way center",answer:"BLACKHOLE"},{id:"A2",clue:"Shooting star burn",answer:"METEOR"},{id:"A3",clue:"Giant gas ball",answer:"NEBULA"},{id:"A4",clue:"Exploding star death",answer:"SUPERNOVA"}]},
-    {id:"B",theme:"FAMOUS INVENTORS",fields:[{id:"B1",clue:"Light bulb",answer:"EDISON"},{id:"B2",clue:"Telephone",answer:"BELL"},{id:"B3",clue:"Airplane brothers",answer:"WRIGHT"},{id:"B4",clue:"Internet",answer:"BERNERSLEE"}]},
-    {id:"C",theme:"PSYCHOLOGICAL TERMS",fields:[{id:"C1",clue:"Id ego superego",answer:"FREUD"},{id:"C2",clue:"Collective unconscious",answer:"JUNG"},{id:"C3",clue:"Conditioning reflex",answer:"PAVLOV"},{id:"C4",clue:"Hierarchy of needs",answer:"MASLOW"}]},
-    {id:"D",theme:"WORLD WONDERS",fields:[{id:"D1",clue:"Egypt pyramid",answer:"GIZA"},{id:"D2",clue:"Jordan carved city",answer:"PETRA"},{id:"D3",clue:"Machu Picchu Peru",answer:"MACCHU"},{id:"D4",clue:"Chinese long wall",answer:"GREATWALL"}]},
-  ], final:{answer:"DISCOVERY",hint:"Finding what was hidden"} },
-
-  /* 17 */ { columns:[
-    {id:"A",theme:"CARD GAMES",fields:[{id:"A1",clue:"21 target",answer:"BLACKJACK"},{id:"A2",clue:"Texas Hold",answer:"POKER"},{id:"A3",clue:"Draw four wild",answer:"UNO"},{id:"A4",clue:"Pairs classic",answer:"BRIDGE"}]},
-    {id:"B",theme:"SEAS",fields:[{id:"B1",clue:"Mediterranean Adriatic",answer:"ADRIATIC"},{id:"B2",clue:"Hot red sea",answer:"REDSEA"},{id:"B3",clue:"Saltiest lake-sea",answer:"DEADSEA"},{id:"B4",clue:"Between Europe & UK",answer:"NORTHSEA"}]},
-    {id:"C",theme:"WEAPONS",fields:[{id:"C1",clue:"Long blade knight",answer:"SWORD"},{id:"C2",clue:"Japanese blade",answer:"KATANA"},{id:"C3",clue:"Stone tip arrow",answer:"ARROW"},{id:"C4",clue:"Viking axe",answer:"BATTLEAXE"}]},
-    {id:"D",theme:"FAMOUS DUELS",fields:[{id:"D1",clue:"Hamilton Burr pistols",answer:"HAMILTON"},{id:"D2",clue:"Pushkin fatal",answer:"PUSHKIN"},{id:"D3",clue:"Wild West shootout",answer:"GUNFIGHT"},{id:"D4",clue:"Jedi lightsaber",answer:"OBI"}]},
-  ], final:{answer:"CONFLICT",hint:"Clash of forces"} },
-
-  /* 18 */ { columns:[
-    {id:"A",theme:"FAMOUS LOGOS",fields:[{id:"A1",clue:"Bitten apple",answer:"APPLE"},{id:"A2",clue:"Swoosh shoe",answer:"NIKE"},{id:"A3",clue:"Golden arches M",answer:"MCDONALDS"},{id:"A4",clue:"Three pointed star",answer:"MERCEDES"}]},
-    {id:"B",theme:"LANGUAGES FAMILIES",fields:[{id:"B1",clue:"Romance Latin roots",answer:"ROMANCE"},{id:"B2",clue:"Germanic English Dutch",answer:"GERMANIC"},{id:"B3",clue:"Slavic Russian Polish",answer:"SLAVIC"},{id:"B4",clue:"Semitic Arabic Hebrew",answer:"SEMITIC"}]},
-    {id:"C",theme:"PSYCHOLOGY TERMS",fields:[{id:"C1",clue:"Unconscious defense",answer:"DENIAL"},{id:"C2",clue:"Mirror opposite",answer:"PROJECTION"},{id:"C3",clue:"Transfer feelings",answer:"TRANSFERENCE"},{id:"C4",clue:"Revert childhood",answer:"REGRESSION"}]},
-    {id:"D",theme:"CURRENCIES 2",fields:[{id:"D1",clue:"Swiss franc",answer:"FRANC"},{id:"D2",clue:"Brazil real",answer:"REAL"},{id:"D3",clue:"India rupee",answer:"RUPEE"},{id:"D4",clue:"South Korea won",answer:"WON"}]},
-  ], final:{answer:"IDENTITY",hint:"Who you truly are"} },
-
-  /* 19 */ { columns:[
-    {id:"A",theme:"MUSICAL KEYS",fields:[{id:"A1",clue:"Happy piano key",answer:"CMAJOR"},{id:"A2",clue:"Sad minor key",answer:"AMINOR"},{id:"A3",clue:"Jazz flatted notes",answer:"BLUES"},{id:"A4",clue:"Pentatonic scale",answer:"PENTATONIC"}]},
-    {id:"B",theme:"FAMOUS ATHLETES",fields:[{id:"B1",clue:"GOAT basketball",answer:"JORDAN"},{id:"B2",clue:"100m record",answer:"BOLT"},{id:"B3",clue:"Tennis 23 slams",answer:"SERENA"},{id:"B4",clue:"Football el Clasico",answer:"MESSI"}]},
-    {id:"C",theme:"FAMOUS ISLANDS",fields:[{id:"C1",clue:"Hawaii Pacific",answer:"HAWAII"},{id:"C2",clue:"UK island England",answer:"GREATBRITAIN"},{id:"C3",clue:"Australia island",answer:"AUSTRALIA"},{id:"C4",clue:"Iceland volcanic",answer:"ICELAND"}]},
-    {id:"D",theme:"PHYSICS TERMS",fields:[{id:"D1",clue:"Attraction between masses",answer:"GRAVITY"},{id:"D2",clue:"E equals mc squared",answer:"ENERGY"},{id:"D3",clue:"Electron proton neutron",answer:"ATOM"},{id:"D4",clue:"Speed fastest",answer:"LIGHT"}]},
-  ], final:{answer:"PHYSICS",hint:"Rules of the universe"} },
-
-  /* 20 */ { columns:[
-    {id:"A",theme:"ANCIENT CITIES",fields:[{id:"A1",clue:"Colosseum city",answer:"ROME"},{id:"A2",clue:"Parthenon city",answer:"ATHENS"},{id:"A3",clue:"Pharaoh pyramid city",answer:"CAIRO"},{id:"A4",clue:"Hanging gardens city",answer:"BABYLON"}]},
-    {id:"B",theme:"MUSICAL INSTRUMENTS 2",fields:[{id:"B1",clue:"Plucked strings harp",answer:"HARP"},{id:"B2",clue:"Air reed woodwind",answer:"OBOE"},{id:"B3",clue:"Bowed strings",answer:"VIOLIN"},{id:"B4",clue:"Percussion metal",answer:"XYLOPHONE"}]},
-    {id:"C",theme:"FAMOUS TRIALS",fields:[{id:"C1",clue:"OJ Simpson murder",answer:"OJSIMPSON"},{id:"C2",clue:"Nuremberg war crimes",answer:"NUREMBERG"},{id:"C3",clue:"Socrates poison",answer:"SOCRATES"},{id:"C4",clue:"Salem witch trials",answer:"SALEM"}]},
-    {id:"D",theme:"PROGRAMMING CONCEPTS",fields:[{id:"D1",clue:"Stored data container",answer:"VARIABLE"},{id:"D2",clue:"Loop repeat code",answer:"LOOP"},{id:"D3",clue:"If else condition",answer:"CONDITION"},{id:"D4",clue:"Reusable code block",answer:"FUNCTION"}]},
-  ], final:{answer:"HISTORY",hint:"What came before"} },
-
-  /* 21 */ { columns:[
-    {id:"A",theme:"AFRICAN COUNTRIES",fields:[{id:"A1",clue:"Pyramids country",answer:"EGYPT"},{id:"A2",clue:"Savanna lions country",answer:"KENYA"},{id:"A3",clue:"Table Mountain country",answer:"SOUTHAFRICA"},{id:"A4",clue:"Nile source country",answer:"ETHIOPIA"}]},
-    {id:"B",theme:"FAMOUS GENERALS",fields:[{id:"B1",clue:"Waterloo conqueror",answer:"WELLINGTON"},{id:"B2",clue:"Conquer Persia",answer:"ALEXANDER"},{id:"B3",clue:"Gallic wars",answer:"CAESAR"},{id:"B4",clue:"Desert Fox Africa",answer:"ROMMEL"}]},
-    {id:"C",theme:"WEATHER PHENOMENA",fields:[{id:"C1",clue:"Rainbow colors arch",answer:"RAINBOW"},{id:"C2",clue:"Ball lightning rare",answer:"BALLLIGHTNING"},{id:"C3",clue:"Northern green lights",answer:"AURORA"},{id:"C4",clue:"Sand storm desert",answer:"SANDSTORM"}]},
-    {id:"D",theme:"ANCIENT WONDERS",fields:[{id:"D1",clue:"Rhodes giant statue",answer:"COLOSSUS"},{id:"D2",clue:"Lighthouse Alexandria",answer:"LIGHTHOUSE"},{id:"D3",clue:"Babylon hanging plants",answer:"HANGINGGARDENS"},{id:"D4",clue:"Olympia Zeus statue",answer:"ZEUS"}]},
-  ], final:{answer:"ANCIENT",hint:"From long ago"} },
-
-  /* 22 */ { columns:[
-    {id:"A",theme:"ECONOMIC TERMS",fields:[{id:"A1",clue:"Rising prices",answer:"INFLATION"},{id:"A2",clue:"Market downturn",answer:"RECESSION"},{id:"A3",clue:"Country total output",answer:"GDP"},{id:"A4",clue:"Central bank rate",answer:"INTERESTRATE"}]},
-    {id:"B",theme:"FAMOUS QUOTES 3",fields:[{id:"B1",clue:"Rome wasn't built",answer:"ROMAN"},{id:"B2",clue:"Actions speak louder",answer:"ENGLISH"},{id:"B3",clue:"Fortune favors bold",answer:"LATIN"},{id:"B4",clue:"Know thyself",answer:"GREEK"}]},
-    {id:"C",theme:"FAMOUS BUILDINGS",fields:[{id:"C1",clue:"Pisa tower lean",answer:"PISATOWER"},{id:"C2",clue:"Sydney opera shell",answer:"OPERAHOUSE"},{id:"C3",clue:"Paris iron tower",answer:"EIFFELTOWER"},{id:"C4",clue:"India love monument",answer:"TAJMAHAL"}]},
-    {id:"D",theme:"OLYMPIC SPORTS",fields:[{id:"D1",clue:"Rings gymnastics",answer:"GYMNASTICS"},{id:"D2",clue:"Pool swimming race",answer:"SWIMMING"},{id:"D3",clue:"Track sprint run",answer:"ATHLETICS"},{id:"D4",clue:"Mat wrestling",answer:"WRESTLING"}]},
-  ], final:{answer:"ACHIEVEMENT",hint:"Reaching the top"} },
-
-  /* 23 */ { columns:[
-    {id:"A",theme:"MOUNTAIN RANGES",fields:[{id:"A1",clue:"Europe spine Alps",answer:"ALPS"},{id:"A2",clue:"South America Andes",answer:"ANDES"},{id:"A3",clue:"Russia Ural",answer:"URAL"},{id:"A4",clue:"Asia Himalaya",answer:"HIMALAYAS"}]},
-    {id:"B",theme:"MUSIC LEGENDS",fields:[{id:"B1",clue:"King of rock roll",answer:"PRESLEY"},{id:"B2",clue:"Thriller moonwalk",answer:"JACKSON"},{id:"B3",clue:"Liverpool Fab Four",answer:"BEATLES"},{id:"B4",clue:"Ziggy Stardust",answer:"BOWIE"}]},
-    {id:"C",theme:"FAMOUS WOMEN",fields:[{id:"C1",clue:"First female pilot",answer:"EARHART"},{id:"C2",clue:"Mother Teresa Calcutta",answer:"MOTHERTERESA"},{id:"C3",clue:"Radium pioneer",answer:"CURIE"},{id:"C4",clue:"Nursing lamp lady",answer:"NIGHTINGALE"}]},
-    {id:"D",theme:"BEER TYPES",fields:[{id:"D1",clue:"Dark roasted stout",answer:"STOUT"},{id:"D2",clue:"Light lager cold",answer:"LAGER"},{id:"D3",clue:"Wheat white beer",answer:"WHEAT"},{id:"D4",clue:"Bitter hop ale",answer:"IPA"}]},
-  ], final:{answer:"LEGEND",hint:"Icon of their time"} },
-
-  /* 24 */ { columns:[
-    {id:"A",theme:"FAMOUS SCIENTISTS 3",fields:[{id:"A1",clue:"Electricity current",answer:"FARADAY"},{id:"A2",clue:"Atom structure Bohr",answer:"BOHR"},{id:"A3",clue:"Germ theory",answer:"PASTEUR"},{id:"A4",clue:"Telescope universe",answer:"GALILEO"}]},
-    {id:"B",theme:"FICTIONAL WORLDS",fields:[{id:"B1",clue:"Middle Earth Tolkien",answer:"MIDDLEEARTH"},{id:"B2",clue:"Hogwarts magic school",answer:"HOGWARTS"},{id:"B3",clue:"Westeros dragons",answer:"WESTEROS"},{id:"B4",clue:"Pandora blue avatars",answer:"PANDORA"}]},
-    {id:"C",theme:"FAMOUS POEMS",fields:[{id:"C1",clue:"The Raven Poe",answer:"POE"},{id:"C2",clue:"If Rudyard Kipling",answer:"KIPLING"},{id:"C3",clue:"Waste Land TS Eliot",answer:"ELIOT"},{id:"C4",clue:"Leaves of Grass Whitman",answer:"WHITMAN"}]},
-    {id:"D",theme:"HISTORICAL EVENTS",fields:[{id:"D1",clue:"Moon landing year",answer:"1969"},{id:"D2",clue:"Wall Berlin fell",answer:"1989"},{id:"D3",clue:"World War One began",answer:"1914"},{id:"D4",clue:"Internet born year",answer:"1991"}]},
-  ], final:{answer:"HISTORY",hint:"Marking the past"} },
-
-  /* 25 */ { columns:[
-    {id:"A",theme:"MARTIAL ARTS 2",fields:[{id:"A1",clue:"Muay Thai kicks",answer:"MUAYTHAI"},{id:"A2",clue:"Capoeira Brazil dance",answer:"CAPOEIRA"},{id:"A3",clue:"Krav Maga Israel",answer:"KRAVMAGA"},{id:"A4",clue:"Aikido joint locks",answer:"AIKIDO"}]},
-    {id:"B",theme:"FAMOUS LAKES",fields:[{id:"B1",clue:"Russia deepest",answer:"BAIKAL"},{id:"B2",clue:"Africa Victoria",answer:"VICTORIA"},{id:"B3",clue:"USA Michigan",answer:"MICHIGAN"},{id:"B4",clue:"Peru Titicaca",answer:"TITICACA"}]},
-    {id:"C",theme:"ARCHITECTURAL WONDERS",fields:[{id:"C1",clue:"Angkor Wat Cambodia",answer:"ANGKORWAT"},{id:"C2",clue:"Colosseum Rome",answer:"COLOSSEUM"},{id:"C3",clue:"Alhambra Granada",answer:"ALHAMBRA"},{id:"C4",clue:"Versailles France",answer:"VERSAILLES"}]},
-    {id:"D",theme:"FAMOUS EXPLORERS",fields:[{id:"D1",clue:"New world Columbus",answer:"COLUMBUS"},{id:"D2",clue:"Around world Magellan",answer:"MAGELLAN"},{id:"D3",clue:"Africa Stanley Livingstone",answer:"LIVINGSTONE"},{id:"D4",clue:"North Pole Amundsen",answer:"AMUNDSEN"}]},
-  ], final:{answer:"EXPLORATION",hint:"Going beyond the known"} },
-
-  /* 26 */ { columns:[
-    {id:"A",theme:"PROGRAMMING LANGUAGES 2",fields:[{id:"A1",clue:"Apple swift mobile",answer:"SWIFT"},{id:"A2",clue:"Web style sheet",answer:"CSS"},{id:"A3",clue:"Data science R",answer:"R"},{id:"A4",clue:"Systems Rust safe",answer:"RUST"}]},
-    {id:"B",theme:"PSYCHOLOGY DISORDERS",fields:[{id:"B1",clue:"Split personality",answer:"DID"},{id:"B2",clue:"Extreme mood swings",answer:"BIPOLAR"},{id:"B3",clue:"Obsessive rituals",answer:"OCD"},{id:"B4",clue:"Trauma flashbacks",answer:"PTSD"}]},
-    {id:"C",theme:"FAMOUS QUOTES 4",fields:[{id:"C1",clue:"Be the change Gandhi",answer:"GANDHI"},{id:"C2",clue:"I am not failed Edison",answer:"EDISON"},{id:"C3",clue:"Genius is patience Buffon",answer:"BUFFON"},{id:"C4",clue:"Think different Apple",answer:"APPLE"}]},
-    {id:"D",theme:"WINE TYPES",fields:[{id:"D1",clue:"Red Bordeaux type",answer:"CABERNET"},{id:"D2",clue:"White chardonnay",answer:"CHARDONNAY"},{id:"D3",clue:"Sparkling champagne",answer:"PROSECCO"},{id:"D4",clue:"Sweet dessert wine",answer:"RIESLING"}]},
-  ], final:{answer:"MIND",hint:"The power of thought"} },
-
-  /* 27 */ { columns:[
-    {id:"A",theme:"CHESS PIECES",fields:[{id:"A1",clue:"Most powerful queen",answer:"QUEEN"},{id:"A2",clue:"Castle rook",answer:"ROOK"},{id:"A3",clue:"Horse L shape",answer:"KNIGHT"},{id:"A4",clue:"Diagonal bishop",answer:"BISHOP"}]},
-    {id:"B",theme:"FAMOUS ARTISTS 2",fields:[{id:"B1",clue:"Melting clocks",answer:"DALI"},{id:"B2",clue:"Water lily pond",answer:"MONET"},{id:"B3",clue:"Scream painting",answer:"MUNCH"},{id:"B4",clue:"Girl with pearl",answer:"VERMEER"}]},
-    {id:"C",theme:"MILITARY RANKS",fields:[{id:"C1",clue:"Five star general",answer:"GENERAL"},{id:"C2",clue:"Star admiral navy",answer:"ADMIRAL"},{id:"C3",clue:"Senior officer colonel",answer:"COLONEL"},{id:"C4",clue:"Junior officer lieutenant",answer:"LIEUTENANT"}]},
-    {id:"D",theme:"FAMOUS MUSICALS",fields:[{id:"D1",clue:"Cats Webber",answer:"CATS"},{id:"D2",clue:"Chicago jazz crime",answer:"CHICAGO"},{id:"D3",clue:"Grease pink ladies",answer:"GREASE"},{id:"D4",clue:"Hamilton rap history",answer:"HAMILTON"}]},
-  ], final:{answer:"PERFORMANCE",hint:"Show must go on"} },
-
-  /* 28 */ { columns:[
-    {id:"A",theme:"GEMSTONES 2",fields:[{id:"A1",clue:"Deep blue lapis",answer:"LAPIS"},{id:"A2",clue:"Orange fire opal",answer:"OPAL"},{id:"A3",clue:"Yellow citrine warm",answer:"CITRINE"},{id:"A4",clue:"Red garnet deep",answer:"GARNET"}]},
-    {id:"B",theme:"FAMOUS BUILDINGS 2",fields:[{id:"B1",clue:"Parliament Big Ben",answer:"BIGBEN"},{id:"B2",clue:"White House USA",answer:"WHITEHOUSE"},{id:"B3",clue:"Kremlin Russia",answer:"KREMLIN"},{id:"B4",clue:"Forbidden City China",answer:"FORBIDDENCITY"}]},
-    {id:"C",theme:"COCKTAILS 2",fields:[{id:"C1",clue:"Whiskey sour citrus",answer:"WHISKEYSOUR"},{id:"C2",clue:"Negroni bitters",answer:"NEGRONI"},{id:"C3",clue:"Old fashioned bourbon",answer:"OLDFASHIONED"},{id:"C4",clue:"Aperol spritz Italy",answer:"APEROLSPRITZ"}]},
-    {id:"D",theme:"FAMOUS PAINTINGS",fields:[{id:"D1",clue:"Mona Lisa smile",answer:"MONALISA"},{id:"D2",clue:"Starry night sky",answer:"STARRYNIGHT"},{id:"D3",clue:"Birth of Venus",answer:"BIRTHOFVENUS"},{id:"D4",clue:"Last Supper table",answer:"LASTSUPPER"}]},
-  ], final:{answer:"MASTERPIECE",hint:"Work of genius"} },
-
-  /* 29 */ { columns:[
-    {id:"A",theme:"FAMOUS SPEECHES 2",fields:[{id:"A1",clue:"Gettysburg Lincoln",answer:"LINCOLN"},{id:"A2",clue:"Iron Curtain Churchill",answer:"CHURCHILL"},{id:"A3",clue:"We choose Moon JFK",answer:"KENNEDY"},{id:"A4",clue:"Blood sweat tears",answer:"CHURCHILL2"}]},
-    {id:"B",theme:"SCIENTIFIC LAWS",fields:[{id:"B1",clue:"Objects in motion Newton",answer:"NEWTON1ST"},{id:"B2",clue:"Equal opposite reaction",answer:"NEWTON3RD"},{id:"B3",clue:"Energy conservation",answer:"THERMODYNAMICS"},{id:"B4",clue:"Attraction mass gravity",answer:"GRAVITATION"}]},
-    {id:"C",theme:"FAMOUS PLAYS",fields:[{id:"C1",clue:"To be or not to be",answer:"HAMLET"},{id:"C2",clue:"Star crossed lovers",answer:"ROMEO"},{id:"C3",clue:"Scottish king murder",answer:"MACBETH"},{id:"C4",clue:"Moor of Venice jealous",answer:"OTHELLO"}]},
-    {id:"D",theme:"CARD HANDS",fields:[{id:"D1",clue:"Straight flush royal",answer:"ROYALFLUSH"},{id:"D2",clue:"Same four cards",answer:"FOUROFAKIND"},{id:"D3",clue:"Three plus two pair",answer:"FULLHOUSE"},{id:"D4",clue:"Two matching cards",answer:"PAIR"}]},
-  ], final:{answer:"STRATEGY",hint:"Thinking ahead to win"} },
-];
-
-function getCurrentBoard() {
-  const idx = Math.floor(Date.now() / 30000) % B.length;
-  return JSON.parse(JSON.stringify(B[idx]));
-}
-
-function nrm(s){return s.trim().toUpperCase().replace(/[^A-Z0-9]/g,"");}
-function match(a,b){return nrm(a)===nrm(b);}
-function gid(){return Math.random().toString(36).slice(2,8).toUpperCase();}
-async function phantom(){try{if(!window.solana?.isPhantom){window.open("https://phantom.app/","_blank");return null;}return(await window.solana.connect()).publicKey.toString();}catch{return null;}}
-
-async function sendWager(fromWalletStr, amount) {
-  // DEPOSITS_PAUSED (2026-11-06): wagers paused while payouts are locked.
-  return { ok: false, err: "Deposits are temporarily paused for maintenance. No tokens were sent. Please try again later." };
-  try {
-    if (!window.solana?.isPhantom) return { ok: false, err: "Phantom not found" };
-    const msg = new TextEncoder().encode(`FREEDOM Associations wager: ${amount} tokens from ${fromWalletStr}`);
-    const signed = await window.solana.signMessage(msg, "utf8");
-    return { ok: true, id: "SIG_" + Date.now(), sig: Buffer.from(signed.signature).toString("hex") };
-  } catch (e) {
-    return { ok: false, err: e.message || String(e) };
+  function startPractice(exclude) {
+    setMode("practice"); setRoomId(null); setRole("p1"); setErr("");
+    setLocal(G.newGame({ boardIdx: G.pickBoard(exclude), p1: me(), p2: { id: "bot", name: BOT_NAMES[Math.floor(Math.random() * BOT_NAMES.length)], bot: true }, mode: "practice" }));
+    setScreen("game");
   }
+  async function createRoom() {
+    if (!db) { setErr("Online play is unavailable right now."); return; }
+    const id = roomCode();
+    await set(ref(db, "games/" + id), { ...G.newGame({ p1: me(), mode: "friend" }), createdAt: Date.now() });
+    setMode("friend"); setRole("p1"); setRoomId(id); setRemote(null); setErr(""); setScreen("waiting");
+  }
+  async function joinRoom(code) {
+    const id = code.trim().toUpperCase(); setErr("");
+    if (!db || id.length !== 6) { setErr("Enter the 6-letter room code."); return; }
+    const snap = await get(ref(db, "games/" + id));
+    const d = snap.val();
+    if (!d) { setErr(`Room ${id} doesn't exist.`); return; }
+    if (d.p1?.id === uid) { setErr("That's your own room — share the code with a friend."); return; }
+    if (d.status !== "waiting") { setErr("That game has already started."); return; }
+    const r = await runTransaction(ref(db, "games/" + id), cur => {
+      if (!cur) return cur;
+      if (cur.status !== "waiting") return;
+      return { ...cur, p2: me(), status: "active", turn: "p1", turnAt: Date.now(), didOpen: false, acted: false };
+    });
+    if (!r.committed) { setErr("Someone else joined first."); return; }
+    setMode("friend"); setRole("p2"); setRoomId(id); setScreen("game");
+  }
+  function leave() {
+    if (mode === "friend" && roomId && db) {
+      const g = remote;
+      if (g?.status === "waiting") remove(ref(db, "games/" + roomId)).catch(() => {});
+      else if (g?.status === "active") runTransaction(ref(db, "games/" + roomId), cur => (cur ? G.forfeit(cur, role) || undefined : cur)).catch(() => {});
+    }
+    setRoomId(null); setRemote(null); setLocal(null); setMode(null); setScreen("lobby");
+  }
+
+  return (
+    <div className="app">
+      <style>{CSS}</style>
+      <div className="aurora" aria-hidden="true"><i /><i /><i /></div>
+      <MuteButton />
+      {screen === "lobby" && <Lobby name={name} setName={setName} err={err} onPractice={() => startPractice()} onCreate={createRoom} onJoin={joinRoom} />}
+      {screen === "waiting" && <Waiting code={roomId} onCancel={leave} />}
+      {screen === "game" && mode === "practice" && local &&
+        <Match g={local} role="p1" practice setLocal={setLocal} onLeave={leave} onAgain={() => startPractice(local.boardIdx)} />}
+      {screen === "game" && mode === "friend" && remote &&
+        <Match g={remote} role={role} roomId={roomId} onLeave={leave} onAgain={leave} />}
+    </div>
+  );
 }
 
-function Fld({field,st,solvedBy,canOpen,onOpen,h}){
-  const bg=st==="solved"?(solvedBy==="p1"?PC1:PC2):st==="clue"?"#c47d0e":canOpen?"#2d5a8a":"#1e3a5a";
-  const s={width:"100%",height:h||52,borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:2,padding:"0 8px",boxSizing:"border-box",background:bg,border:st==="clue"?"2px solid #f59e0b":st==="solved"?"none":canOpen?"1px solid #3a6a9a":"1px solid #1a2a3a",boxShadow:canOpen&&st==="hidden"?"0 3px 8px rgba(0,0,0,.5)":st==="solved"?"0 3px 0 rgba(0,0,0,.4)":"none",cursor:canOpen&&st==="hidden"?"pointer":"default",transition:"all .15s",userSelect:"none"};
-  if(st==="solved")return<div style={s}><div style={{fontSize:"clamp(9px,1.1vw,15px)",fontWeight:900,color:"#fff",textAlign:"center",letterSpacing:.5}}>{field.answer}</div><div style={{fontSize:"clamp(6px,.8vw,10px)",color:"rgba(255,255,255,.7)",textAlign:"center"}}>{field.clue}</div></div>;
-  if(st==="clue")return<div style={s}><div style={{fontSize:"clamp(9px,1vw,14px)",color:"#fff",fontWeight:700,textAlign:"center",lineHeight:1.2}}>{field.clue}</div></div>;
-  return<div onClick={canOpen?()=>onOpen(field.id):undefined} style={s} onMouseEnter={e=>{if(canOpen)e.currentTarget.style.background="#3a6e9e";}} onMouseLeave={e=>{if(canOpen)e.currentTarget.style.background="#2d5a8a";}}><span style={{fontSize:"clamp(11px,1.2vw,18px)",fontWeight:900,color:canOpen?"#7ab8e0":"#1a2a3a",letterSpacing:1}}>{field.id}</span></div>;
-}
-
-function TIn({cid,solved,solvedBy,theme,disabled,onGuess,h}){
-  const[ed,setEd]=useState(false);const[v,setV]=useState("");const[err,setErr]=useState(false);
-  const sc=solvedBy==="p1"?PC1:PC2;const ph=h||48;
-  const sub=()=>{if(!v.trim())return;if(!onGuess(v)){setErr(true);setTimeout(()=>setErr(false),600);}else{setV("");setEd(false);}};
-  if(solved)return<div style={{width:"100%",height:ph,borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",background:sc,boxShadow:"0 3px 0 rgba(0,0,0,.4)"}}><span style={{fontSize:"clamp(8px,.9vw,12px)",fontWeight:900,color:"#fff",textAlign:"center",padding:"0 4px"}}>✓ {theme}</span></div>;
-  if(!disabled&&ed)return<div style={{width:"100%",height:ph,borderRadius:8,display:"flex",alignItems:"center",gap:4,padding:"0 6px",background:"#fff",animation:err?"shake .4s":"none",boxSizing:"border-box"}}><input value={v} onChange={e=>setV(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")sub();if(e.key==="Escape")setEd(false);}} placeholder={"Col "+cid} autoFocus style={{flex:1,background:"transparent",border:"none",fontSize:11,fontWeight:700,outline:"none",fontFamily:"inherit",color:"#1a2a4a",minWidth:0}}/><button onClick={sub} style={{background:"#2d5a8a",border:"none",borderRadius:5,padding:"4px 8px",color:"#fff",fontWeight:900,cursor:"pointer",fontSize:10,flexShrink:0}}>OK</button><button onClick={()=>setEd(false)} style={{background:"#ddd",border:"none",borderRadius:5,padding:"4px 5px",color:"#666",cursor:"pointer",fontSize:10}}>✕</button></div>;
-  return<div onClick={disabled?undefined:()=>setEd(true)} style={{width:"100%",height:ph,borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",background:disabled?"#111c2a":"rgba(45,90,138,.35)",border:"2px dashed "+(disabled?"#1a2a3a":"#5b9bd5"),cursor:disabled?"default":"pointer",transition:"all .15s"}} onMouseEnter={e=>{if(!disabled)e.currentTarget.style.background="rgba(45,90,138,.55)";}} onMouseLeave={e=>{if(!disabled)e.currentTarget.style.background="rgba(45,90,138,.35)";}}><span style={{fontSize:22,color:disabled?"#1a2a3a":"#7ab8e0",fontWeight:900}}>?</span></div>;
-}
-
-function FIn({solved,solvedBy,answer,disabled,onGuess,h}){
-  const[ed,setEd]=useState(false);const[v,setV]=useState("");const[err,setErr]=useState(false);
-  const sc=solvedBy==="p1"?PC1:PC2;const ph=h||56;
-  const sub=()=>{if(!v.trim())return;if(!onGuess(v)){setErr(true);setTimeout(()=>setErr(false),600);}else{setV("");setEd(false);}};
-  if(solved)return<div style={{width:"100%",height:ph,borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",background:sc,boxShadow:"0 4px 0 rgba(0,0,0,.4)"}}><span style={{fontSize:16,fontWeight:900,color:"#fff",letterSpacing:1}}>✓ {answer}</span></div>;
-  if(!disabled&&ed)return<div style={{width:"100%",height:ph,borderRadius:10,display:"flex",alignItems:"center",gap:8,padding:"0 10px",background:"#fff",animation:err?"shake .4s":"none",boxSizing:"border-box"}}><input value={v} onChange={e=>setV(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")sub();if(e.key==="Escape")setEd(false);}} placeholder="Final answer..." autoFocus style={{flex:1,background:"transparent",border:"none",fontSize:14,fontWeight:700,outline:"none",fontFamily:"inherit",color:"#1a2a4a",textAlign:"center"}}/><button onClick={sub} style={{background:"#f59e0b",border:"none",borderRadius:8,padding:"7px 14px",color:"#fff",fontWeight:900,cursor:"pointer",fontSize:13,flexShrink:0}}>OK</button></div>;
-  return<div onClick={disabled?undefined:()=>setEd(true)} style={{width:"100%",height:ph,borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",background:disabled?"#111c2a":"rgba(245,158,11,.15)",border:"3px dashed "+(disabled?"#1a2a3a":"#f59e0b"),cursor:disabled?"default":"pointer",transition:"all .15s"}} onMouseEnter={e=>{if(!disabled)e.currentTarget.style.background="rgba(245,158,11,.3)";}} onMouseLeave={e=>{if(!disabled)e.currentTarget.style.background="rgba(245,158,11,.15)";}}><span style={{fontSize:26,color:disabled?"#1a2a3a":"#f59e0b",fontWeight:900}}>?</span></div>;
-}
-
-function Spin({msg}){return<div style={ROOT}><style>{CSS}</style><div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:14}}><div style={{width:52,height:52,border:"4px solid rgba(255,255,255,.1)",borderTop:"4px solid #f59e0b",borderRadius:"50%",animation:"spin 1s linear infinite"}}/><div style={{color:"rgba(255,255,255,.6)",fontSize:13,letterSpacing:2}}>{msg}</div></div></div>;}
-
-function EndOverlay({cd,winner,myRole,p1name,p2name,scores,wager,board}){
-  const isDraw=winner==="draw";
-  const iWin=winner===myRole;
-  const winnerName=winner==="p1"?p1name:winner==="p2"?p2name:null;
-  // 95/5 split
-  const totalPot=wager*2;
-  const winnerPayout=Math.floor(totalPot*0.95);
-  const burnAmt=totalPot-winnerPayout;
-  return(
-    <div style={{position:"absolute",inset:0,zIndex:100,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.82)",backdropFilter:"blur(4px)"}}>
-      <div style={{textAlign:"center",padding:"32px 24px",background:"#0a1628",borderRadius:24,border:"2px solid "+(isDraw?"#f59e0b":iWin?"#22c55e":"#ef4444"),maxWidth:420,width:"90%",boxShadow:"0 0 60px "+(isDraw?"rgba(245,158,11,.3)":iWin?"rgba(34,197,94,.3)":"rgba(239,68,68,.3)")}}>
-        <div style={{fontSize:64,marginBottom:8}}>{isDraw?"🤝":iWin?"🏆":"💀"}</div>
-        <div style={{fontFamily:"'Black Ops One',cursive",fontSize:28,letterSpacing:3,color:isDraw?"#f59e0b":iWin?"#22c55e":"#ef4444",marginBottom:4}}>
-          {isDraw?"DRAW!":iWin?"YOU WIN!":"YOU LOSE"}
+/* ============================== LOBBY ============================== */
+function Lobby({ name, setName, err, onPractice, onCreate, onJoin }) {
+  const [code, setCode] = useState("");
+  const ok = name.trim().length > 0;
+  return (
+    <main className="lobby">
+      <header className="brand">
+        <div className="logo" aria-hidden="true">
+          {["A", "B", "C", "D"].map((l, i) => <span key={l} style={{ animationDelay: `${i * 0.6}s` }}>{l}</span>)}
         </div>
-        {/* IZMENA: prikazujemo 95% payout + koliko se sagoreva */}
-        {!isDraw&&(
-          <div style={{fontSize:14,color:"rgba(255,255,255,.6)",marginBottom:16}}>
-            🏅 <b style={{color:"#fff"}}>{winnerName}</b> takes{" "}
-            <b style={{color:"#f59e0b"}}>{winnerPayout}</b> FREEDOM
-            <span style={{fontSize:11,color:"rgba(255,120,120,.8)",marginLeft:6}}>
-              ({burnAmt} burned 🔥)
-            </span>
+        <h1>Associations</h1>
+        <p>Open the clues, find the link, solve the final word.</p>
+      </header>
+
+      <section className="card">
+        <label className="lbl" htmlFor="nm">Your name</label>
+        <input id="nm" className="inp" value={name} maxLength={16} placeholder="Type your name" onChange={e => setName(e.target.value)} />
+
+        <button className="btn primary big" disabled={!ok} onClick={onPractice}>Play vs bot <small>free · instant</small></button>
+
+        <div className="split">
+          <button className="btn soft" disabled={!ok} onClick={onCreate}>Invite a friend <small>create a room</small></button>
+          <form className="join" onSubmit={e => { e.preventDefault(); onJoin(code); }}>
+            <input className="inp code" value={code} maxLength={6} placeholder="CODE" aria-label="Room code" onChange={e => setCode(e.target.value.toUpperCase())} />
+            <button className="btn soft" disabled={!ok || code.length !== 6}>Join</button>
+          </form>
+        </div>
+        {err && <div className="err" role="alert">{err}</div>}
+        {!ok && <div className="hint">Enter your name to start.</div>}
+
+        <div className="paused">
+          <b>FREEDOM token matches</b>
+          <span>Paused while we upgrade the escrow. Free games are open.</span>
+        </div>
+      </section>
+
+      <section className="card rules">
+        <h2>How to play</h2>
+        <ol>
+          <li><b>Open one field</b> on your turn — every field hides an easy clue word.</li>
+          <li><b>Guess a column</b> (A–D) from its clues, or the <b>final</b> word that links all four columns.</li>
+          <li><b>Right answer</b> = play again. Wrong answer = the other player's turn.</li>
+          <li><b>30 seconds</b> per turn. Run out of time and a random field opens for you.</li>
+          <li><b>No response twice in a row</b> and your opponent wins the game.</li>
+          <li><b>Solve the final</b> to win. Column +10 (+2 for each closed field) · Final +20 (+5 for each unsolved column).</li>
+        </ol>
+      </section>
+      <footer className="foot"><span className="dg">DEGEN</span><span className="sf">SAFE</span> · Project Freedom</footer>
+    </main>
+  );
+}
+
+function Waiting({ code, onCancel }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <main className="center">
+      <div className="card narrow">
+        <div className="breath" aria-hidden="true" />
+        <h2>Waiting for your friend</h2>
+        <p className="muted">Send them this room code:</p>
+        <button className="codebox" onClick={() => { navigator.clipboard?.writeText(code); setCopied(true); setTimeout(() => setCopied(false), 1500); }}>
+          {code}<small>{copied ? "copied ✓" : "tap to copy"}</small>
+        </button>
+        <button className="btn ghost" onClick={onCancel}>Cancel</button>
+      </div>
+    </main>
+  );
+}
+
+/* ============================== MATCH ============================== */
+function Match({ g, role, practice, setLocal, roomId, onLeave, onAgain }) {
+  const b = BOARDS[g.boardIdx];
+  const myTurn = g.status === "active" && g.turn === role;
+  const final = G.finalPhase(g), over = g.status === "finished";
+  const canOpen = myTurn && !g.didOpen && !final;
+  const canGuess = myTurn && (g.didOpen || final);
+  const [target, setTarget] = useState(null);          // "A".."D" | "F"
+  const [text, setText] = useState("");
+  const [shake, setShake] = useState(false);
+  const inputRef = useRef(null);
+  const opp = role === "p1" ? "p2" : "p1";
+
+  // ---- apply a move: locally for practice, as a Firebase transaction for 1-vs-1 ----
+  const latest = useRef(g); latest.current = g;
+  const act = useCallback(async fn => {
+    if (practice) { const r = fn(latest.current); if (r) { latest.current = r.g || r; setLocal(latest.current); } return r; }
+    let out = null;
+    await runTransaction(ref(db, "games/" + roomId), cur => { if (!cur) return cur; const r = fn(cur); if (!r) return; out = r; return r.g || r; }).catch(() => {});
+    return out;
+  }, [practice, roomId]);
+
+  // ---- shot clock: measured from when this screen saw the turn begin (no clock-skew between players) ----
+  const turnKey = g.status === "active" ? `${g.turnAt}|${g.turn}` : "";
+  const seen = useRef({ key: "", at: Date.now() });
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    seen.current = { key: turnKey, at: Date.now() }; setNow(Date.now()); setTarget(null); setText("");
+    if (!turnKey) return;
+    if (g.turn === role) sfx.turn();
+    const tick = setInterval(() => setNow(Date.now()), 250);
+    const onClock = g[g.turn];
+    const mine = g.turn === role;
+    // the player on turn enforces their own clock; the opponent backs it up 2.5 s later (covers a closed tab)
+    const t = onClock?.bot ? null : setTimeout(() => act(cur => (cur.status === "active" && `${cur.turnAt}|${cur.turn}` === turnKey ? G.timeout(cur) : null)),
+      G.TURN_MS + (mine ? 0 : practice ? 0 : 2500));
+    return () => { clearInterval(tick); if (t) clearTimeout(t); };
+  }, [turnKey]);
+  const left = turnKey ? Math.max(0, G.TURN_MS - (now - seen.current.at)) : 0;
+  const secs = Math.ceil(left / 1000);
+  useEffect(() => { if (myTurn && secs <= 5 && secs > 0) sfx.tick(); }, [secs]);
+
+  // ---- practice bot ----
+  useEffect(() => {
+    if (!practice || g.status !== "active" || !g[g.turn]?.bot) return;
+    const t = setTimeout(() => act(cur => (cur.status === "active" && cur[cur.turn]?.bot ? G.botPlay(cur).g : null)), 1300 + Math.random() * 1400);
+    return () => clearTimeout(t);
+  }, [practice, g.turnAt, g.didOpen, g.status, g.turn]);
+
+  // ---- sounds for what just happened (works for both players) ----
+  const lastLog = useRef((g.log || [])[0] || "");
+  useEffect(() => {
+    const top = (g.log || [])[0] || ""; if (top === lastLog.current) return; lastLog.current = top;
+    if (top.startsWith("✓") || top.startsWith("★")) sfx.right(); else if (top.startsWith("✗")) sfx.wrong(); else if (/ opened /.test(top)) sfx.open();
+  }, [g.log]);
+  const winRef = useRef(false);
+  useEffect(() => { if (over && !winRef.current) { winRef.current = true; if (g.winner === role) sfx.win(); recordResult(g, role, practice); } }, [over]);
+
+  useEffect(() => { if (target) setTimeout(() => inputRef.current?.focus(), 30); }, [target]);
+
+  async function submit(e) {
+    e?.preventDefault(); const v = text.trim(); if (!v || !target) return;
+    const r = await act(cur => (target === "F" ? G.guessFinal(cur, role, v) : G.guessColumn(cur, role, target, v)));
+    if (r && !r.ok) { setShake(true); setTimeout(() => setShake(false), 450); }
+    setText(""); setTarget(null);
+  }
+
+  const status = over ? "Game over"
+    : !myTurn ? `${g[opp]?.name || "Opponent"} is thinking…`
+    : final ? `Final round — guess a column or the final (${g.finalTries ?? G.FINAL_TRIES} tries left)`
+    : canOpen ? "Your turn — open a field"
+    : "Guess a column or the final word — or pass";
+
+  const showAll = over;
+  const solved = G.colSolved(g), opened = G.opened(g);
+  const colorOf = r => (r === "p1" ? "var(--p1)" : "var(--p2)");
+
+  const tile = (c, i) => {
+    const id = G.fieldId(c, i), by = solved[c], open = opened[id] || by || showAll;
+    const word = b.cols[G.IDS.indexOf(c)].w[i];
+    if (open) return <div key={id} className={"tile open" + (by ? " solved" : "")} style={by ? { "--c": colorOf(by) } : null}><span>{word}</span></div>;
+    return <button key={id} className={"tile closed" + (canOpen ? " can" : "")} disabled={!canOpen} aria-label={`Open field ${id}`}
+      onClick={() => act(cur => G.openField(cur, role, id))}>{id}</button>;
+  };
+  const answer = c => {
+    const by = solved[c], col = b.cols[G.IDS.indexOf(c)];
+    if (by || showAll) return <div key="ans" className={"ans done" + (by ? "" : " missed")} style={by ? { "--c": colorOf(by) } : null}>{col.a}</div>;
+    return <button key="ans" className={"ans" + (canGuess ? " can" : "") + (target === c ? " sel" : "")} disabled={!canGuess} onClick={() => setTarget(c)} aria-label={`Guess column ${c}`}>{c} <em>?</em></button>;
+  };
+  const column = (c, flip) => (
+    <div className={"col" + (flip ? " flip" : "")}>
+      {[0, 1, 2, 3].map(i => tile(c, i))}
+      {answer(c)}
+    </div>
+  );
+
+  return (
+    <main className="match">
+      <div className="topbar">
+        <Player p={g[role]} score={g.scores?.[role] || 0} color="var(--p1c)" active={g.turn === role && !over} you strikes={g.strikes?.[role]} />
+        <div className="clock" aria-label={over ? "Game over" : `${secs} seconds left`}>
+          <svg viewBox="0 0 44 44" aria-hidden="true">
+            <circle cx="22" cy="22" r="19" className="trk" />
+            {!over && <circle cx="22" cy="22" r="19" className="prg" style={{ strokeDashoffset: 119.4 * (1 - left / G.TURN_MS), stroke: secs <= 10 ? "var(--warn)" : myTurn ? "var(--p1)" : "var(--p2)" }} />}
+          </svg>
+          <b>{over ? "★" : secs}</b>
+        </div>
+        <Player p={g[opp]} score={g.scores?.[opp] || 0} color="var(--p2c)" active={g.turn === opp && !over} right strikes={g.strikes?.[opp]} />
+      </div>
+      <div className={"status" + (myTurn ? " mine" : "")}>{status}</div>
+
+      <div className={"board" + (shake ? " shake" : "")}>
+        <div className="half">{column("A")}{column("B")}</div>
+        <div className="finalrow">
+          {g.finalSolved || showAll
+            ? <div className={"final done" + (g.finalSolved ? "" : " missed")} style={g.finalSolved ? { "--c": colorOf(g.finalSolved) } : null}>{b.final}</div>
+            : <button className={"final" + (canGuess ? " can" : "") + (target === "F" ? " sel" : "")} disabled={!canGuess} onClick={() => setTarget("F")}>Final word <em>?</em></button>}
+        </div>
+        <div className="half bottom">{column("C", true)}{column("D", true)}</div>
+      </div>
+
+      <div className="dock">
+        {target && canGuess ? (
+          <form className="guess" onSubmit={submit}>
+            <span className="tag">{target === "F" ? "Final" : `Column ${target}`}</span>
+            <input ref={inputRef} autoFocus className="inp" value={text} maxLength={24} placeholder="Type your answer…" onChange={e => setText(e.target.value)} onKeyDown={e => e.key === "Escape" && setTarget(null)} />
+            <button className="btn primary">Guess</button>
+            <button type="button" className="btn ghost" onClick={() => setTarget(null)} aria-label="Cancel guess">✕</button>
+          </form>
+        ) : (
+          <div className="actions">
+            {canGuess && !final && <button className="btn soft" onClick={() => act(cur => G.pass(cur, role))}>Pass</button>}
+            <ul className="log">{(g.log || []).slice(0, 3).map((l, i) => <li key={i + l} style={{ opacity: 1 - i * 0.3 }}>{l}</li>)}</ul>
+            <button className="btn ghost small" onClick={onLeave}>Leave</button>
           </div>
         )}
-        {isDraw&&(
-          <div style={{fontSize:14,color:"rgba(255,255,255,.6)",marginBottom:16}}>
-            Both players get their <b style={{color:"#f59e0b"}}>{wager}</b> tokens back
-          </div>
-        )}
-        {/* Scores */}
-        <div style={{display:"flex",gap:12,justifyContent:"center",marginBottom:16}}>
-          {["p1","p2"].map(r=>{const isW=!isDraw&&r===winner;return(
-            <div key={r} style={{flex:1,padding:"10px",borderRadius:12,background:isDraw?"rgba(245,158,11,.08)":isW?"rgba(34,197,94,.1)":"rgba(255,255,255,.05)",border:"2px solid "+(isDraw?"rgba(245,158,11,.3)":isW?"#22c55e":"rgba(255,255,255,.1)")}}>
-              <div style={{fontSize:10,color:"rgba(255,255,255,.4)",marginBottom:2}}>{r==="p1"?p1name:p2name}</div>
-              <div style={{fontSize:28,fontWeight:900,color:isDraw?"#f59e0b":isW?"#22c55e":"#fff"}}>{r==="p1"?scores.p1:scores.p2}</div>
-              <div style={{fontSize:9,color:"rgba(255,255,255,.3)"}}>pts</div>
-            </div>
-          );})}
-        </div>
-        {isDraw&&board&&<div style={{background:"rgba(255,255,255,.04)",borderRadius:12,padding:"10px 12px",marginBottom:16,textAlign:"left"}}>
-          <div style={{fontSize:9,color:"#f59e0b",letterSpacing:2,fontWeight:700,marginBottom:8}}>ANSWERS</div>
-          {board.columns.map(c=><div key={c.id} style={{display:"flex",gap:8,alignItems:"center",marginBottom:5}}>
-            <span style={{fontFamily:"'Black Ops One',cursive",fontSize:12,color:"rgba(0,255,255,0.7)",minWidth:16}}>{c.id}</span>
-            <span style={{fontSize:12,color:"rgba(255,255,255,.8)",fontWeight:700}}>{c.theme}</span>
-          </div>)}
-          <div style={{display:"flex",gap:8,alignItems:"center",marginTop:6,borderTop:"1px solid rgba(255,255,255,.1)",paddingTop:6}}>
-            <span style={{fontFamily:"'Black Ops One',cursive",fontSize:12,color:"#f59e0b",minWidth:16}}>★</span>
-            <span style={{fontSize:12,color:"#f59e0b",fontWeight:700}}>{board.final.answer}</span>
-          </div>
-        </div>}
-        <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
-          <div style={{width:36,height:36,borderRadius:"50%",background:"rgba(255,255,255,.06)",border:"2px solid rgba(255,255,255,.2)",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Black Ops One',cursive",fontSize:16,color:"#fff"}}>{cd}</div>
-          <span style={{fontSize:11,color:"rgba(255,255,255,.4)"}}>Returning to lobby...</span>
+      </div>
+
+      {over && <EndCard g={g} role={role} practice={practice} onAgain={onAgain} onLeave={onLeave} />}
+    </main>
+  );
+}
+
+function Player({ p, score, color, active, you, right, strikes }) {
+  return (
+    <div className={"player" + (active ? " on" : "") + (right ? " right" : "")} style={{ "--pc": color }}>
+      <div className="avatar">{(p?.name || "?").slice(0, 1).toUpperCase()}</div>
+      <div className="pinfo">
+        <span className="pname">{p?.name || "Waiting…"}{you && <i> (you)</i>}</span>
+        <span className="pscore">{score}</span>
+        {strikes > 0 && <span className="warn">missed a turn</span>}
+      </div>
+    </div>
+  );
+}
+
+function EndCard({ g, role, practice, onAgain, onLeave }) {
+  const draw = g.winner === "draw", won = g.winner === role;
+  return (
+    <div className="overlay" role="dialog" aria-label="Game result">
+      <div className="card end">
+        <div className="big">{draw ? "🤝" : won ? "🏆" : "🌙"}</div>
+        <h2>{draw ? "It's a draw" : won ? "You win!" : `${g[g.winner]?.name || "Opponent"} wins`}</h2>
+        <p className="muted">{g.reason}</p>
+        <div className="scores"><span>{g[role]?.name}: <b>{g.scores?.[role] || 0}</b></span><span>{g[role === "p1" ? "p2" : "p1"]?.name}: <b>{g.scores?.[role === "p1" ? "p2" : "p1"] || 0}</b></span></div>
+        <p className="muted small">The full board is shown behind this card.</p>
+        <div className="row">
+          <button className="btn primary" onClick={onAgain}>{practice ? "Play again" : "Back to lobby"}</button>
+          {practice && <button className="btn ghost" onClick={onLeave}>Lobby</button>}
         </div>
       </div>
     </div>
   );
 }
 
-export default function App(){
-  const[myUid]=useState(getUid);
-  const[scr,setScr]=useState("lobby");
-  const[nm,setNm]=useState("");
-  const[wager,setWager]=useState(100);
-  const[mode,setMode]=useState("create");
-  const[jin,setJin]=useState("");
-  const[jerr,setJerr]=useState("");
-  const[wallet,setWallet]=useState(null);
-  const[wload,setWload]=useState(false);
-  const[ldmsg,setLdmsg]=useState("");
-  const[roomId,setRoomId]=useState(null);
-  const[myRole,setMyRole]=useState(null);
-  const[gs,setGs]=useState(null);
-  const[started,setStarted]=useState(false);
-  const[tt,setTt]=useState(TSEC);
-  const[it,setIt]=useState(ISEC);
-  const[didOpen,setDidOpen]=useState(false);
-  const[log,setLog]=useState([]);
-  const[isDesktop,setIsDesktop]=useState(window.innerWidth>=768);
-  const[dtCol,setDtCol]=useState(null);
-  const[dtVal,setDtVal]=useState("");
-  const[dtErr,setDtErr]=useState(false);
-  const[ending,setEnding]=useState(false);
-  const[endCd,setEndCd]=useState(10);
-  const endR=useRef();
-
-  const tR=useRef(),iR=useRef(),lastAct=useRef(Date.now()),rRef=useRef(null),didOpenRef=useRef(false);
-  const L=m=>setLog(p=>[m,...p].slice(0,4));
-  const touch=()=>{lastAct.current=Date.now();setIt(ISEC);};
-
-  useEffect(()=>{const c=()=>setIsDesktop(window.innerWidth>=768);window.addEventListener("resize",c);return()=>window.removeEventListener("resize",c);},[]);
-  useEffect(()=>{didOpenRef.current=didOpen;},[didOpen]);
-  useEffect(()=>{setDtCol(null);setDtVal("");setDtErr(false);},[gs?.currentTurn]);
-  useEffect(()=>{try{if(window.solana?.isPhantom&&window.solana.publicKey)setWallet(window.solana.publicKey.toString());}catch{};},[]);
-
-  useEffect(()=>{if(!roomId||!db)return;rRef.current=ref(db,"games/"+roomId);const u=onValue(rRef.current,s=>{const d=s.val();if(!d)return;setGs(d);if(d.status==="finished"&&!ending){startEnding();}if(d.status==="active"&&d.p1&&d.p2&&!started){setStarted(true);lastAct.current=Date.now();}});return()=>u();},[roomId,started,ending]);
-
-  useEffect(()=>{if(scr!=="game"||!started||!gs)return;if(gs.status==="finished"||gs.currentTurn!==myRole)return;clearInterval(tR.current);setTt(TSEC);tR.current=setInterval(()=>setTt(t=>{if(t<=1){clearInterval(tR.current);autoRev();return TSEC;}return t-1;}),1000);return()=>clearInterval(tR.current);},[gs?.currentTurn,gs?.finalPhase,scr,started]);
-
-  useEffect(()=>{if(!gs||gs.finalPhase||gs.status==="finished"||!gs.board)return;if(Object.keys(gs.revealed||{}).length>=gs.board.columns.reduce((s,c)=>s+c.fields.length,0)){update(rRef.current,{finalPhase:true,finalAttempts:3});L("🎯 All fields open! 3 attempts left!");}},[gs?.revealed]);
-
-  useEffect(()=>{if(scr!=="waiting"||!roomId||!db)return;const u=onValue(ref(db,"games/"+roomId),s=>{const d=s.val();if(d?.status==="active"&&d.p1&&d.p2){setGs(d);setStarted(true);lastAct.current=Date.now();setScr("game");L("Opponent joined! Your turn!");}});return()=>u();},[scr,roomId]);
-
-  async function doWallet(){setWload(true);const a=await phantom();if(a)setWallet(a);setWload(false);}
-
-  async function doCreate(){
-    if(!nm.trim()||!myUid)return;
-    if(!wallet){alert("Connect Phantom first!");return;}
-    setScr("loading");
-    setLdmsg("Loading board...");
-    const board=getCurrentBoard();
-    await new Promise(r=>setTimeout(r,300));
-    setLdmsg(`Sending ${wager} FREEDOM to escrow...`);
-    const tx=await sendWager(wallet,wager);
-    if(!tx.ok){
-      alert("Transfer failed: "+tx.err);
-      setScr("lobby");
-      return;
-    }
-    setLdmsg("Creating room...");
-    const id=gid();
-    try{
-      await set(ref(db,"games/"+id),{
-        p1:myUid,p1name:nm,p1wallet:wallet,
-        p2:null,p2name:null,p2wallet:null,
-        status:"waiting",wager,board,
-        scores:{p1:0,p2:0},
-        revealed:{},colSolved:{A:null,B:null,C:null,D:null},
-        finalSolved:null,finalPhase:false,finalAttempts:3,
-        currentTurn:"p1",lastActivity:Date.now(),
-        winner:null,p1tx:tx.id
-      });
-      setRoomId(id);setMyRole("p1");setStarted(false);setScr("waiting");
-    }catch(e){alert("Error: "+e.message);setScr("lobby");}
-  }
-
-  async function doJoin(){
-    const id=jin.trim().toUpperCase();
-    if(!nm.trim()||!myUid||id.length<6)return;
-    if(!wallet){alert("Connect Phantom first!");return;}
-    setJerr("");setScr("loading");setLdmsg("Looking for room "+id+"...");
-    try{
-      const sn=await get(ref(db,"games/"+id));
-      if(!sn.exists()){setJerr("Room "+id+" not found!");setScr("lobby");return;}
-      const d=sn.val();
-      if(d.status!=="waiting"){setJerr("Room already started!");setScr("lobby");return;}
-      if(d.p1===myUid){setJerr("Can't join your own room!");setScr("lobby");return;}
-      setLdmsg(`Sending ${d.wager} FREEDOM to escrow...`);
-      const tx=await sendWager(wallet,d.wager);
-      if(!tx.ok){alert("Transfer failed: "+tx.err);setScr("lobby");return;}
-      setLdmsg("Joining game...");
-      await update(ref(db,"games/"+id),{
-        p2:myUid,p2name:nm,p2wallet:wallet,
-        status:"active",currentTurn:"p1",
-        lastActivity:Date.now(),p2tx:tx.id
-      });
-      setWager(d.wager);setRoomId(id);setMyRole("p2");
-      setStarted(true);lastAct.current=Date.now();
-      setScr("game");L("Joined! P2. P1 goes first.");
-    }catch(e){setJerr("Error: "+e.message);setScr("lobby");}
-  }
-
-  function startEnding(){
-    clearInterval(tR.current);clearInterval(iR.current);clearInterval(endR.current);
-    setEnding(true);setEndCd(10);
-    let c=10;
-    endR.current=setInterval(()=>{
-      c--;setEndCd(c);
-      if(c<=0){clearInterval(endR.current);setEnding(false);doReset();}
-    },1000);
-  }
-
-  async function doOpen(fid){if(!isMy||didOpen||gs?.finalPhase||!started)return;touch();setDidOpen(true);await update(rRef.current,{["revealed/"+fid]:"clue",lastActivity:Date.now()});L("Field "+fid+" opened!");}
-  async function autoRev(){
-    if(!gs?.board||!rRef.current)return;
-    if(gs?.finalPhase){L("⏱ Time up. Passing turn.");await doPass();return;}
-    if(didOpenRef.current){L("⏱ Time up. Passing turn.");await doPass();return;}
-    const all=gs.board.columns.flatMap(c=>c.fields),hidden=all.filter(f=>!gs.revealed?.[f.id]);
-    if(!hidden.length){await update(rRef.current,{finalPhase:true,finalAttempts:3});return;}
-    const pk=hidden[Math.floor(Math.random()*hidden.length)];
-    await update(rRef.current,{["revealed/"+pk.id]:"clue",lastActivity:Date.now()});
-    L("⏱ "+pk.id+" auto-revealed.");
-    await doPass();
-  }
-  async function doGuessCol(cid,val){
-    touch();
-    const col=gs.board.columns.find(c=>c.id===cid);
-    if(!col||gs.colSolved?.[cid])return false;
-    if(match(val,col.theme)){
-      const u={};
-      col.fields.forEach(f=>{u["revealed/"+f.id]="solved_"+myRole;});
-      u["colSolved/"+cid]=myRole;
-      u["scores/"+myRole]=(gs.scores?.[myRole]||0)+20;
-      u.lastActivity=Date.now();
-      await update(rRef.current,u);
-      L("✅ "+cid+': "'+col.theme+'" +20pts!');
-      return true;
-    }
-    if(gs?.finalPhase){
-      const rem=(gs.finalAttempts||1)-1;
-      if(rem<=0){
-        L("❌ No attempts left! Game over.");
-        const p1=gs.scores?.p1||0,p2=gs.scores?.p2||0;
-        if(p1===p2){await doEnd("draw","No attempts left — it's a draw!");} 
-        else{await doEnd(p1>p2?"p1":"p2","No attempts left! Winner by points.");}
-        return false;
-      }
-      await update(rRef.current,{finalAttempts:rem,lastActivity:Date.now()});
-      L("❌ Wrong! "+rem+" attempt"+(rem===1?"":"s")+" left.");
-    } else {
-      L("❌ Wrong. Opponent's turn!");
-    }
-    await doPass();
-    return false;
-  }
-  async function doGuessFinal(val){
-    touch();
-    if(match(val,gs.board.final.answer)){
-      await update(rRef.current,{finalSolved:myRole,["scores/"+myRole]:(gs.scores?.[myRole]||0)+30,lastActivity:Date.now()});
-      doEnd(myRole,"Final correct! +30pts 🎉");
-      return true;
-    }
-    if(gs?.finalPhase){
-      const rem=(gs.finalAttempts||1)-1;
-      if(rem<=0){
-        L("❌ No attempts left! Game over.");
-        const p1=gs.scores?.p1||0,p2=gs.scores?.p2||0;
-        if(p1===p2){await doEnd("draw","No attempts left — it's a draw!");}
-        else{await doEnd(p1>p2?"p1":"p2","No attempts left! Winner by points.");}
-        return false;
-      }
-      await update(rRef.current,{finalAttempts:rem,lastActivity:Date.now()});
-      L("❌ Wrong final! "+rem+" attempt"+(rem===1?"":"s")+" left.");
-    } else {
-      L("❌ Wrong final.");
-    }
-    await doPass();
-    return false;
-  }
-  async function doPass(){clearInterval(tR.current);setDidOpen(false);await update(rRef.current,{currentTurn:myRole==="p1"?"p2":"p1",lastActivity:Date.now()});}
-  async function doEnd(w,reason){
-    clearInterval(tR.current);clearInterval(iR.current);
-    if(!rRef.current)return;
-    await update(rRef.current,{status:"finished",winner:w,winReason:reason,finishedAt:Date.now()});
-    if(gs){
-      const sc=gs.scores||{p1:0,p2:0};
-      for(const r of["p1","p2"]){
-        const u=gs[r];if(!u)continue;
-        const lb=ref(db,"leaderboard/"+u);
-        const sn=await get(lb);const cv=sn.val()||{wins:0,losses:0,draws:0,points:0};
-        await set(lb,{
-          name:r==="p1"?gs.p1name:gs.p2name,
-          wins:(cv.wins||0)+(w===r?1:0),
-          losses:(cv.losses||0)+(w!==r&&w!=="draw"?1:0),
-          draws:(cv.draws||0)+(w==="draw"?1:0),
-          points:(cv.points||0)+(sc[r]||0)
-        });
-      }
-    }
-    // Payout — samo p1 salje zahtjev (sprecava dupli payout)
-    // payout.js sam citava game iz Firebase i racuna 95/5
-    if(myRole==="p1"&&roomId){
-      try{
-        const resp=await fetch("/api/payout",{
-          method:"POST",
-          headers:{"Content-Type":"application/json"},
-          body:JSON.stringify({roomId})
-        });
-        const data=await resp.json();
-        // IZMENA: log poruka sa tacnim iznosom
-        if(data.ok){
-          if(w==="draw"){
-            L("🤝 Refund sent to both players!");
-          } else {
-            const payout=Math.floor((wager||0)*2*0.95);
-            L(`💰 ${payout} FREEDOM sent to winner!`);
-          }
-        }else{
-          L("⚠️ Payout error: "+data.error);
-        }
-      }catch(e){
-        L("⚠️ Payout failed: "+e.message);
-      }
-    }
-  }
-  function doReset(){setScr("lobby");setRoomId(null);setMyRole(null);setGs(null);setDidOpen(false);setLog([]);setJin("");setJerr("");setStarted(false);}
-
-  const board=gs?.board||null,isMy=gs?.currentTurn===myRole;
-  const scores=gs?.scores||{p1:0,p2:0},revealed=gs?.revealed||{},colSolved=gs?.colSolved||{};
-  const finalSolved=gs?.finalSolved||null,finalPhase=gs?.finalPhase||false,winner=gs?.winner||null,winReason=gs?.winReason||"";
-  const myNm=myRole==="p1"?gs?.p1name||"P1":gs?.p2name||"P2",opNm=myRole==="p1"?gs?.p2name||"P2":gs?.p1name||"P1";
-  const myScore=myRole==="p1"?scores.p1:scores.p2,opScore=myRole==="p1"?scores.p2:scores.p1;
-  const canOpen=isMy&&!didOpen&&!finalPhase&&!winner&&gs?.status==="active"&&started;
-  const canGuess=isMy&&(didOpen||finalPhase)&&!winner&&gs?.status==="active"&&started;
-  const fst=fid=>{const r=revealed[fid];if(!r)return{st:"hidden",sb:null};if(r==="clue")return{st:"clue",sb:null};if(r==="solved_p1")return{st:"solved",sb:"p1"};if(r==="solved_p2")return{st:"solved",sb:"p2"};return{st:"clue",sb:null};};
-
-  const LobbyB=({txt,onClick,dis})=><button onClick={onClick} disabled={dis} style={{width:"100%",padding:"14px 0",background:!dis?"linear-gradient(90deg,#f59e0b,#d97706)":"rgba(255,255,255,.08)",color:!dis?"#fff":"rgba(255,255,255,.3)",border:"none",borderRadius:12,fontFamily:"inherit",fontSize:14,fontWeight:900,cursor:!dis?"pointer":"default",letterSpacing:2,boxShadow:!dis?"0 4px 0 rgba(0,0,0,.3)":"none"}}>{txt}</button>;
-
-  if(scr==="lobby")return(
-    <div style={ROOT}><style>{CSS}</style>
-      <div style={{background:"#0a1628",padding:"12px 16px",borderBottom:"2px solid #f59e0b",textAlign:"center",flexShrink:0}}>
-        <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:10,marginBottom:2}}>
-          <svg width="26" height="26" viewBox="0 0 64 64" fill="none"><polygon points="32,2 54,16 54,40 32,54 10,40 10,16" fill="none" stroke="#8b5cf6" strokeWidth="2" opacity=".6"/><circle cx="32" cy="26" r="16" fill="#fff" opacity=".93"/><rect x="24" y="38" width="7" height="9" rx="2" fill="#fff" opacity=".93"/><rect x="33" y="38" width="7" height="9" rx="2" fill="#fff" opacity=".93"/><ellipse cx="26" cy="24" rx="4.5" ry="5.5" fill="#111"/><ellipse cx="38" cy="24" rx="4.5" ry="5.5" fill="#111"/><ellipse cx="26" cy="23" rx="1.5" ry="2" fill="#8b5cf6" opacity=".9"/><ellipse cx="38" cy="23" rx="1.5" ry="2" fill="#22c55e" opacity=".9"/><path d="M28 34 L32 31 L36 34" stroke="#333" strokeWidth="1.5" fill="none"/></svg>
-          <span style={{fontFamily:"'Black Ops One',cursive",fontSize:22,color:"#22c55e",letterSpacing:4,textShadow:"0 0 16px #22c55e88"}}>FREEDOM</span>
-        </div>
-        <div style={{fontFamily:"'Black Ops One',cursive",fontSize:11,color:"#f59e0b",letterSpacing:4}}>ASSOCIATIONS</div>
-      </div>
-      <div style={{flex:1,overflowY:"auto",padding:"12px 14px"}}>
-        <div style={{background:"rgba(255,255,255,.05)",borderRadius:12,padding:"10px",marginBottom:10,border:"1px solid rgba(255,255,255,.1)"}}>
-          <div style={{fontSize:9,color:"rgba(255,255,255,.4)",letterSpacing:2,marginBottom:6}}>PHANTOM WALLET</div>
-          {wallet?<div style={{display:"flex",alignItems:"center",gap:8}}><div style={{width:8,height:8,borderRadius:"50%",background:"#22c55e",boxShadow:"0 0 8px #22c55e"}}/><span style={{fontSize:11,color:"#22c55e",fontFamily:"monospace"}}>{wallet.slice(0,6)}...{wallet.slice(-4)}</span><span style={{fontSize:9,color:"rgba(255,255,255,.3)",marginLeft:"auto"}}>✓ Connected</span></div>:<button onClick={doWallet} disabled={wload} style={{width:"100%",padding:"10px 0",background:"linear-gradient(90deg,#8b5cf6,#7c3aed)",border:"none",borderRadius:10,color:"#fff",fontFamily:"inherit",fontSize:12,fontWeight:700,cursor:"pointer",letterSpacing:1}}>{wload?"CONNECTING...":"🔗 CONNECT PHANTOM WALLET"}</button>}
-        </div>
-        <input value={nm} onChange={e=>setNm(e.target.value)} placeholder="Your name / username" maxLength={16} style={{width:"100%",background:"rgba(255,255,255,.08)",border:"1px solid rgba(255,255,255,.15)",borderRadius:12,padding:"11px 14px",color:"#fff",fontSize:14,outline:"none",fontFamily:"inherit",boxSizing:"border-box",marginBottom:10}}/>
-        <div style={{marginBottom:10}}><div style={{fontSize:9,color:"rgba(255,255,255,.4)",letterSpacing:2,marginBottom:6}}>WAGER — FREEDOM TOKENS</div><div style={{display:"flex",gap:8}}>{WAGERS.map(w=><button key={w} onClick={()=>setWager(w)} style={{flex:1,padding:"10px 0",borderRadius:10,fontFamily:"inherit",fontSize:14,fontWeight:700,cursor:"pointer",background:wager===w?"#f59e0b":"rgba(255,255,255,.08)",color:wager===w?"#fff":"rgba(255,255,255,.7)",border:"2px solid "+(wager===w?"#f59e0b":"rgba(255,255,255,.15)")}}>{w}</button>)}</div></div>
-        <div style={{display:"flex",borderRadius:12,overflow:"hidden",border:"1px solid rgba(255,255,255,.15)",marginBottom:10}}>{[["create","🎮 CREATE"],["join","🚪 JOIN"]].map(([m,l])=><button key={m} onClick={()=>{setMode(m);setJerr("");}} style={{flex:1,padding:"11px 0",fontFamily:"inherit",fontSize:12,fontWeight:700,cursor:"pointer",background:mode===m?"#f59e0b":"transparent",color:mode===m?"#fff":"rgba(255,255,255,.5)",border:"none",letterSpacing:1}}>{l}</button>)}</div>
-        {mode==="create"&&<LobbyB txt="🎮 CREATE ROOM" onClick={doCreate} dis={!nm.trim()||!wallet}/>}
-        {mode==="join"&&<div><div style={{fontSize:9,color:"rgba(255,255,255,.4)",letterSpacing:2,marginBottom:6}}>ENTER ROOM ID</div><input value={jin} onChange={e=>{setJin(e.target.value.toUpperCase());setJerr("");}} maxLength={6} placeholder="ABC123" style={{width:"100%",background:"rgba(255,255,255,.08)",border:"2px solid "+(jin.length===6?"#22c55e":"rgba(255,255,255,.15)"),borderRadius:12,padding:"12px",color:"#22c55e",fontSize:24,outline:"none",fontFamily:"'Black Ops One',cursive",boxSizing:"border-box",textAlign:"center",letterSpacing:10,marginBottom:6}}/>{jerr&&<div style={{padding:"7px 10px",background:"rgba(239,68,68,.15)",border:"1px solid rgba(239,68,68,.4)",borderRadius:8,fontSize:11,color:"#ef4444",marginBottom:6}}>⚠ {jerr}</div>}<button onClick={doJoin} disabled={!nm.trim()||!wallet||jin.length<6} style={{width:"100%",padding:"14px 0",background:jin.length===6&&nm.trim()&&wallet?"linear-gradient(90deg,#22c55e,#16a34a)":"rgba(255,255,255,.08)",color:jin.length===6&&nm.trim()&&wallet?"#fff":"rgba(255,255,255,.3)",border:"none",borderRadius:12,fontFamily:"inherit",fontSize:14,fontWeight:900,cursor:jin.length===6&&nm.trim()&&wallet?"pointer":"default",letterSpacing:2}}>🚪 JOIN ROOM</button></div>}
-        {/* RULES — IZMENA: dodat house fee red */}
-        <div style={{marginTop:12,background:"rgba(255,255,255,.04)",borderRadius:12,padding:"10px",border:"1px solid rgba(255,255,255,.08)"}}><div style={{color:"#f59e0b",fontSize:10,fontWeight:700,letterSpacing:2,marginBottom:6}}>RULES</div>{[["30s/turn","Open 1 field per turn. Guess col theme or final answer."],["Guessing","Correct = keep turn. Wrong = opponent's turn."],["Time up","30s = random field auto-reveals. Pass if already opened."],["Final phase","All fields open: 3 attempts total between both players."],["Draw","Equal/zero points = DRAW, wager returned to both."],["House fee","Winner takes 95% of pot · 5% burned 🔥"],["Points","Theme +20 · Final +30"]].map(([t,d],i)=><div key={i} style={{display:"flex",gap:8,marginBottom:4}}><span style={{fontSize:9,color:"#f59e0b",fontWeight:700,whiteSpace:"nowrap",minWidth:55}}>{t}</span><span style={{fontSize:10,color:"rgba(255,255,255,.45)",lineHeight:1.4}}>{d}</span></div>)}</div>
-        <div style={{textAlign:"center",marginTop:12,paddingBottom:6}}><span style={{fontFamily:"'Black Ops One',cursive",fontSize:11,letterSpacing:2}}><span style={{color:"#8b5cf6"}}>DEGEN</span><span style={{color:"#22c55e"}}>SAFE</span><span style={{color:"rgba(255,255,255,.3)"}}>.FUN</span></span></div>
-      </div>
-    </div>
-  );
-
-  if(scr==="loading")return<Spin msg={ldmsg}/>;
-  if(scr==="waiting")return(
-    <div style={ROOT}><style>{CSS}</style>
-      <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:14,padding:20}}>
-        <div style={{width:56,height:56,border:"4px solid rgba(255,255,255,.1)",borderTop:"4px solid #22c55e",borderRadius:"50%",animation:"spin 1s linear infinite"}}/>
-        <div style={{fontFamily:"'Black Ops One',cursive",fontSize:13,color:"#22c55e",letterSpacing:3}}>WAITING FOR OPPONENT</div>
-        <div style={{fontSize:12,color:"rgba(255,255,255,.5)"}}>Wager: <b style={{color:"#f59e0b"}}>{wager}</b> FREEDOM tokens</div>
-        <div style={{textAlign:"center"}}><div style={{fontSize:12,color:"rgba(255,255,255,.5)",marginBottom:8}}>SHARE ROOM ID:</div><div style={{fontSize:42,fontFamily:"'Black Ops One',cursive",color:"#22c55e",letterSpacing:10,padding:"14px 28px",background:"rgba(34,197,94,.1)",border:"2px solid rgba(34,197,94,.4)",borderRadius:12}}>{roomId}</div></div>
-        <button onClick={()=>{try{set(ref(db,"games/"+roomId),null);}catch{}setScr("lobby");setRoomId(null);setMyRole(null);setStarted(false);}} style={{padding:"10px 22px",background:"rgba(255,255,255,.08)",color:"rgba(255,255,255,.6)",border:"1px solid rgba(255,255,255,.15)",borderRadius:10,fontFamily:"inherit",fontSize:11,fontWeight:700,cursor:"pointer"}}>CANCEL</button>
-      </div>
-    </div>
-  );
-  if(!board)return<Spin msg="Loading..."/>;
-  const[colA,colB,colC,colD]=board.columns;
-
-  const SB=(
-    <div style={{background:"#0a1628",padding:"7px 14px",borderBottom:"2px solid #f59e0b",flexShrink:0}}>
-      <div style={{display:"flex",alignItems:"center",gap:8}}>
-        <div style={{flex:1,display:"flex",alignItems:"center",gap:8}}><div style={{width:34,height:34,borderRadius:"50%",background:PC1,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Black Ops One',cursive",fontSize:11,color:"#fff",flexShrink:0}}>{myNm.slice(0,2).toUpperCase()}</div><div><div style={{fontSize:10,color:"rgba(255,255,255,.5)"}}>{myNm}</div><div style={{fontSize:20,fontWeight:900,color:"#fff",lineHeight:1}}>{myScore}</div></div></div>
-        <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:1,minWidth:56}}>
-          <div style={{width:44,height:44,borderRadius:"50%",background:"#060e1c",border:"3px solid "+(!started?"#1a3450":finalPhase?(tt<10?"#ef4444":"#f59e0b"):isMy?"#22c55e":"#1a3450"),display:"flex",alignItems:"center",justifyContent:"center"}}><span style={{fontFamily:"'Black Ops One',cursive",fontSize:13,fontWeight:900,color:!started?"#1a3450":finalPhase?"#f59e0b":isMy?"#22c55e":"#1a3450"}}>{!started?"⏳":isMy?tt:"·"}</span></div>
-          <div style={{fontSize:6,color:isMy&&started?"#22c55e":"rgba(255,255,255,.3)",letterSpacing:1,fontWeight:700}}>{!started?"WAIT":finalPhase?"FINAL ×"+(gs?.finalAttempts||0):isMy?"YOUR TURN":"WAIT"}</div>
-        </div>
-        <div style={{flex:1,display:"flex",alignItems:"center",gap:8,justifyContent:"flex-end"}}><div style={{textAlign:"right"}}><div style={{fontSize:10,color:"rgba(255,255,255,.5)"}}>{opNm}</div><div style={{fontSize:20,fontWeight:900,color:"#fff",lineHeight:1}}>{opScore}</div></div><div style={{width:34,height:34,borderRadius:"50%",background:PC2,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Black Ops One',cursive",fontSize:11,color:"#fff",flexShrink:0}}>{opNm.slice(0,2).toUpperCase()}</div></div>
-      </div>
-      <div style={{textAlign:"center",marginTop:3,fontSize:10,color:isMy&&started?"#f59e0b":"rgba(255,255,255,.3)",fontWeight:700}}>{!started?"⏳ Waiting...":finalPhase?(isMy?"🎯 TAP ? TO GUESS":"⏳ OPPONENT..."):isMy?(canOpen?"👆 TAP A FIELD":canGuess?"💡 TAP ? TO GUESS":"..."):"⏳ OPPONENT'S TURN"}</div>
-    </div>
-  );
-
-  const PL=(<div style={{display:"flex",gap:8,alignItems:"flex-start"}}>{isMy&&!finalPhase&&didOpen&&started&&<button onClick={()=>{touch();doPass();L("Passed.");}} style={{padding:"6px 12px",background:"rgba(255,255,255,.08)",color:"rgba(255,255,255,.6)",border:"1px solid rgba(255,255,255,.15)",borderRadius:8,fontFamily:"inherit",fontSize:10,fontWeight:700,cursor:"pointer",flexShrink:0}}>PASS</button>}{log.length>0&&<div style={{flex:1,padding:"4px 8px",background:"rgba(0,0,0,.3)",borderRadius:8}}>{log.map((l,i)=><div key={i} style={{fontSize:10,color:i===0?"rgba(255,255,255,.8)":"rgba(255,255,255,.3)",padding:"1px 0"}}>{l}</div>)}</div>}</div>);
-
-  if(isDesktop){
-    const FW = "15vw";
-    const AR = "4/1";
-    const STP = 1.0;
-    const G = 3;
-
-    const fieldBase = {
-      width: FW,
-      aspectRatio: AR,
-      maxHeight: "min(3.8vw, 5.5vh)",
-      borderRadius: 6,
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      flexDirection: "column",
-      gap: 2,
-      padding: "0 0.5vw",
-      boxSizing: "border-box",
-      flexShrink: 0,
-      transition: "all .15s",
-      userSelect: "none",
-    };
-
-    const XFld = ({field, st, sb, canOpen}) => {
-      const bg = st==="solved"?(sb==="p1"?PC1:PC2):st==="clue"?"#c47d0e":canOpen?"#2d5a8a":"#1e3a5a";
-      const s = {...fieldBase, background:bg, border:st==="clue"?"2px solid #f59e0b":st==="solved"?"none":canOpen?"1px solid rgba(0,255,255,0.5)":"1px solid #1a2a3a", boxShadow:canOpen&&st==="hidden"?"0 0 0.8vw 0.15vw rgba(0,255,255,0.35)":st==="solved"?"0 3px 0 rgba(0,0,0,.4)":"none", cursor:canOpen&&st==="hidden"?"pointer":"default"};
-      if(st==="solved") return <div style={s} onClick={canOpen?()=>doOpen(field.id):undefined}><div style={{fontSize:"clamp(9px,1.1vw,15px)",fontWeight:900,color:"#fff",textAlign:"center"}}>{field.answer}</div><div style={{fontSize:"clamp(6px,.75vw,10px)",color:"rgba(255,255,255,.75)",textAlign:"center"}}>{field.clue}</div></div>;
-      if(st==="clue") return <div style={s}><div style={{fontSize:"clamp(8px,1vw,13px)",color:"#fff",fontWeight:700,textAlign:"center",lineHeight:1.2}}>{field.clue}</div></div>;
-      return <div style={s} onClick={canOpen?()=>doOpen(field.id):undefined} onMouseEnter={e=>{if(canOpen){e.currentTarget.style.background="rgba(0,40,60,0.95)";e.currentTarget.style.boxShadow="0 0 1vw 0.25vw rgba(0,255,255,0.6)";}}} onMouseLeave={e=>{if(canOpen){e.currentTarget.style.background="#2d5a8a";e.currentTarget.style.boxShadow="0 0 0.8vw 0.15vw rgba(0,255,255,0.35)";}}}><span style={{fontSize:"clamp(9px,1vw,16px)",fontWeight:900,color:canOpen?"rgba(0,255,255,0.85)":"#1a2a3a",letterSpacing:1}}>{field.id}</span></div>;
-    };
-
-    const XTh = ({cid, solved, solvedBy, theme, disabled, onGuess}) => {
-      const isActive = dtCol === cid;
-      const sc = solvedBy==="p1"?PC1:PC2;
-      const sub = () => {
-        if(!dtVal.trim())return;
-        if(!onGuess(dtVal)){
-          setDtErr(true);
-          setTimeout(()=>setDtErr(false),600);
-        }else{
-          setDtVal("");
-          setDtCol(null);
-        }
-      };
-      if(solved) return <div style={{...fieldBase,background:sc,boxShadow:"0 3px 0 rgba(0,0,0,.4)"}}><span style={{fontSize:"clamp(8px,.9vw,13px)",fontWeight:900,color:"#fff",textAlign:"center",padding:"0 4px"}}>✓ {theme}</span></div>;
-      if(!disabled&&isActive) return <div style={{...fieldBase,background:"#fff",animation:dtErr?"shake .4s":"none",flexDirection:"row",gap:4,padding:"0 6px"}}><input value={dtVal} onChange={e=>setDtVal(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")sub();if(e.key==="Escape")setDtCol(null);}} placeholder={"Theme "+cid+"..."} autoFocus style={{flex:1,background:"transparent",border:"none",fontSize:11,fontWeight:700,outline:"none",fontFamily:"inherit",color:"#1a2a4a",minWidth:0}}/><button onClick={sub} style={{background:"#2d5a8a",border:"none",borderRadius:5,padding:"4px 8px",color:"#fff",fontWeight:900,cursor:"pointer",fontSize:10,flexShrink:0}}>OK</button><button onClick={()=>setDtCol(null)} style={{background:"#ddd",border:"none",borderRadius:5,padding:"4px 5px",color:"#666",cursor:"pointer",fontSize:10}}>✕</button></div>;
-      return <div style={{...fieldBase,background:disabled?"#111c2a":"rgba(0,30,50,.5)",border:"1.5px dashed "+(disabled?"#1a2a3a":"rgba(0,255,255,0.45)"),boxShadow:disabled?"none":"0 0 0.6vw 0.1vw rgba(0,255,255,0.2)",cursor:disabled?"default":"pointer"}} onClick={disabled?undefined:()=>setDtCol(cid)} onMouseEnter={e=>{if(!disabled){e.currentTarget.style.background="rgba(0,50,70,0.7)";e.currentTarget.style.boxShadow="0 0 1vw 0.2vw rgba(0,255,255,0.4)";}}} onMouseLeave={e=>{if(!disabled){e.currentTarget.style.background="rgba(0,30,50,.5)";e.currentTarget.style.boxShadow="0 0 0.6vw 0.1vw rgba(0,255,255,0.2)";}}}> 
-        <span style={{fontSize:14,color:disabled?"#1a2a3a":"rgba(0,255,255,0.85)",fontWeight:900,marginBottom:2}}>?</span>
-        <span style={{fontSize:"clamp(5px,.6vw,8px)",color:disabled?"#1a2a3a":"rgba(0,255,255,0.55)",letterSpacing:1}}>COL {cid}</span>
-      </div>;
-    };
-
-    return(
-      <div style={{...ROOT,position:"relative"}}><style>{CSS}</style>
-      {ending&&<EndOverlay cd={endCd} winner={winner} myRole={myRole} p1name={gs?.p1name} p2name={gs?.p2name} scores={gs?.scores||{p1:0,p2:0}} wager={wager} board={board}/>}
-      {SB}
-      <div style={{flex:1,padding:"4px 12px 4px",display:"flex",flexDirection:"column",overflow:"hidden"}}>
-        <div style={{display:"flex",gap:"2vw",alignItems:"center",flex:1,minHeight:0}}>
-          <div style={{flex:"0 0 22vw",display:"flex",flexDirection:"column",justifyContent:"center",gap:G}}>
-            {colA.fields.map((f,i)=>{
-              const{st,sb}=fst(f.id);
-              return <div key={f.id} style={{marginLeft:`${i*STP}vw`}}><XFld field={f} st={st} sb={sb} canOpen={canOpen&&st==="hidden"}/></div>;
-            })}
-            <div style={{marginLeft:`${3*STP}vw`}}>
-              <XTh cid="A" solved={!!colSolved.A} solvedBy={colSolved.A} theme={colA.theme} disabled={!canGuess} onGuess={v=>doGuessCol("A",v)}/>
-            </div>
-            <div style={{height:G*2}}/>
-            <div style={{marginLeft:`${3*STP}vw`}}>
-              <XTh cid="C" solved={!!colSolved.C} solvedBy={colSolved.C} theme={colC.theme} disabled={!canGuess} onGuess={v=>doGuessCol("C",v)}/>
-            </div>
-            {colC.fields.map((f,i)=>{
-              const{st,sb}=fst(f.id);
-              return <div key={f.id} style={{marginLeft:`${(3-i)*STP}vw`}}><XFld field={f} st={st} sb={sb} canOpen={canOpen&&st==="hidden"}/></div>;
-            })}
-          </div>
-          <div style={{flex:"0 0 12vw",display:"flex",alignItems:"center",justifyContent:"center"}}>
-            <FIn solved={!!finalSolved} solvedBy={finalSolved} answer={board.final.answer} disabled={!canGuess} onGuess={doGuessFinal} h={"min(3.5vw, 5vh)"}/>
-          </div>
-          <div style={{flex:"0 0 22vw",display:"flex",flexDirection:"column",justifyContent:"center",gap:G,alignItems:"flex-end"}}>
-            {colB.fields.map((f,i)=>{
-              const{st,sb}=fst(f.id);
-              return <div key={f.id} style={{marginRight:`${i*STP}vw`}}><XFld field={f} st={st} sb={sb} canOpen={canOpen&&st==="hidden"}/></div>;
-            })}
-            <div style={{marginRight:`${3*STP}vw`}}>
-              <XTh cid="B" solved={!!colSolved.B} solvedBy={colSolved.B} theme={colB.theme} disabled={!canGuess} onGuess={v=>doGuessCol("B",v)}/>
-            </div>
-            <div style={{height:G*2}}/>
-            <div style={{marginRight:`${3*STP}vw`}}>
-              <XTh cid="D" solved={!!colSolved.D} solvedBy={colSolved.D} theme={colD.theme} disabled={!canGuess} onGuess={v=>doGuessCol("D",v)}/>
-            </div>
-            {colD.fields.map((f,i)=>{
-              const{st,sb}=fst(f.id);
-              return <div key={f.id} style={{marginRight:`${(3-i)*STP}vw`}}><XFld field={f} st={st} sb={sb} canOpen={canOpen&&st==="hidden"}/></div>;
-            })}
-          </div>
-        </div>
-        <div style={{flexShrink:0,paddingTop:4}}>
-          {PL}
-          <div style={{textAlign:"center",fontSize:9,color:"rgba(0,255,180,.5)",letterSpacing:1,marginTop:2}}>
-            [SYSTEM]: Board #{Math.floor(Date.now()/30000)%B.length} active · Rotates every 30s
-          </div>
-          <div style={{textAlign:"center",marginTop:2}}><span style={{fontFamily:"'Black Ops One',cursive",fontSize:9,letterSpacing:2}}><span style={{color:"#8b5cf6"}}>DEGEN</span><span style={{color:"#22c55e"}}>SAFE</span><span style={{color:"rgba(255,255,255,.3)"}}>.FUN</span></span></div>
-        </div>
-      </div>
-      </div>
-    );
-  }
-
-  return(
-    <div style={{...ROOT,position:"relative"}}><style>{CSS}</style>
-    {ending&&<EndOverlay cd={endCd} winner={winner} myRole={myRole} p1name={gs?.p1name} p2name={gs?.p2name} scores={gs?.scores||{p1:0,p2:0}} wager={wager} board={board}/>}
-    {SB}
-    <div style={{flex:1,overflowY:"auto",padding:"7px 10px"}}>
-      <div style={{maxWidth:500,margin:"0 auto",display:"flex",flexDirection:"column",gap:5}}>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
-          <div style={{textAlign:"center",paddingBottom:2,borderBottom:"3px solid "+PC1}}><span style={{fontFamily:"'Black Ops One',cursive",fontSize:16,color:PC1,letterSpacing:3}}>A</span></div>
-          <div style={{textAlign:"center",paddingBottom:2,borderBottom:"3px solid "+PC2}}><span style={{fontFamily:"'Black Ops One',cursive",fontSize:16,color:PC2,letterSpacing:3}}>B</span></div>
-        </div>
-        {[0,1,2,3].map(i=><div key={i} style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>{[colA.fields[i],colB.fields[i]].map(f=>{const{st,sb}=fst(f.id);return<Fld key={f.id} field={f} st={st} solvedBy={sb} canOpen={canOpen&&st==="hidden"} onOpen={doOpen} h={52}/>;})}</div>)}
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}><TIn cid="A" solved={!!colSolved.A} solvedBy={colSolved.A} theme={colA.theme} disabled={!canGuess} onGuess={v=>doGuessCol("A",v)} h={48}/><TIn cid="B" solved={!!colSolved.B} solvedBy={colSolved.B} theme={colB.theme} disabled={!canGuess} onGuess={v=>doGuessCol("B",v)} h={48}/></div>
-        <FIn solved={!!finalSolved} solvedBy={finalSolved} answer={board.final.answer} disabled={!canGuess} onGuess={doGuessFinal} h={56}/>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}><TIn cid="C" solved={!!colSolved.C} solvedBy={colSolved.C} theme={colC.theme} disabled={!canGuess} onGuess={v=>doGuessCol("C",v)} h={48}/><TIn cid="D" solved={!!colSolved.D} solvedBy={colSolved.D} theme={colD.theme} disabled={!canGuess} onGuess={v=>doGuessCol("D",v)} h={48}/></div>
-        {[0,1,2,3].map(i=><div key={i} style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>{[colC.fields[i],colD.fields[i]].map(f=>{const{st,sb}=fst(f.id);return<Fld key={f.id} field={f} st={st} solvedBy={sb} canOpen={canOpen&&st==="hidden"} onOpen={doOpen} h={52}/>;})}</div>)}
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}><div style={{textAlign:"center",paddingTop:2,borderTop:"3px solid "+PC1}}><span style={{fontFamily:"'Black Ops One',cursive",fontSize:16,color:PC1,letterSpacing:3}}>C</span></div><div style={{textAlign:"center",paddingTop:2,borderTop:"3px solid "+PC2}}><span style={{fontFamily:"'Black Ops One',cursive",fontSize:16,color:PC2,letterSpacing:3}}>D</span></div></div>
-        {PL}
-        <div style={{textAlign:"center",padding:"6px 0"}}><span style={{fontFamily:"'Black Ops One',cursive",fontSize:10,letterSpacing:2}}><span style={{color:"#8b5cf6"}}>DEGEN</span><span style={{color:"#22c55e"}}>SAFE</span><span style={{color:"rgba(255,255,255,.3)"}}>.FUN</span></span></div>
-      </div>
-    </div>
-    </div>
-  );
+function MuteButton() {
+  const [m, setM] = useState(isMuted());
+  useEffect(() => onMute(setM), []);
+  return <button className="mute" onClick={() => setMuted(!m)} aria-label={m ? "Turn sound on" : "Mute sound"} title={m ? "Sound off" : "Sound on"}>{m ? "🔇" : "🔊"}</button>;
 }
 
-const ROOT={height:"100vh",display:"flex",flexDirection:"column",background:"#0d1b2e",fontFamily:"'Rajdhani','Oswald',sans-serif",color:"#fff",overflow:"hidden"};
-const CSS=`
-  @import url('https://fonts.googleapis.com/css2?family=Black+Ops+One&family=Rajdhani:wght@400;600;700&display=swap');
-  html,body{margin:0;padding:0;background:#0d1b2e;}
-  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
-  @keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-6px)}75%{transform:translateX(6px)}}
-  @keyframes glowPulse{0%,100%{box-shadow:0 0 20px rgba(245,158,11,.2)}50%{box-shadow:0 0 40px rgba(245,158,11,.5)}}
-  @keyframes spin{to{transform:rotate(360deg)}}
-  ::-webkit-scrollbar{width:3px}::-webkit-scrollbar-track{background:rgba(0,0,0,.3)}::-webkit-scrollbar-thumb{background:rgba(255,255,255,.15);border-radius:2px}
+// leaderboard (1-vs-1 only): every player updates their own row once
+async function recordResult(g, role, practice) {
+  if (practice || !db) return;
+  const me = g[role]; if (!me?.id) return;
+  try {
+    const r = ref(db, "leaderboard/" + me.id); const cur = (await get(r)).val() || {};
+    await set(r, { name: me.name, wins: (cur.wins || 0) + (g.winner === role ? 1 : 0), losses: (cur.losses || 0) + (g.winner !== role && g.winner !== "draw" ? 1 : 0), draws: (cur.draws || 0) + (g.winner === "draw" ? 1 : 0), points: (cur.points || 0) + (g.scores?.[role] || 0) });
+  } catch (e) {}
+}
+
+/* ============================== STYLE ============================== */
+const CSS = `
+:root{--bg1:#0b1226;--bg2:#06171c;--ink:#eef4ff;--mute:rgba(226,236,255,.62);--glass:rgba(255,255,255,.06);--line:rgba(255,255,255,.12);
+  --p1:#5eead4;--p2:#c4b5fd;--p1c:#2dd4bf;--p2c:#a78bfa;--gold:#fcd34d;--warn:#fb7185}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body,#root{height:100%}
+body{background:radial-gradient(120% 90% at 20% 0%,#16224a 0%,var(--bg1) 45%,var(--bg2) 100%);color:var(--ink);font-family:'Outfit',system-ui,sans-serif;overflow-x:hidden}
+button{font-family:inherit;color:inherit;cursor:pointer;border:0;background:none}button:disabled{cursor:default}
+.app{min-height:100%;position:relative;isolation:isolate}
+.aurora{position:fixed;inset:0;z-index:-1;overflow:hidden;pointer-events:none}
+.aurora i{position:absolute;width:55vmax;height:55vmax;border-radius:50%;filter:blur(70px);opacity:.28;will-change:transform}
+.aurora i:nth-child(1){background:#2dd4bf;left:-15vmax;top:-20vmax;animation:drift 26s ease-in-out infinite alternate}
+.aurora i:nth-child(2){background:#7c3aed;right:-20vmax;top:10vmax;opacity:.22;animation:drift 32s ease-in-out infinite alternate-reverse}
+.aurora i:nth-child(3){background:#0ea5e9;left:20vmax;bottom:-30vmax;opacity:.18;animation:drift 38s ease-in-out infinite alternate}
+@keyframes drift{to{transform:translate(8vmax,6vmax) scale(1.12)}}
+.card{background:linear-gradient(160deg,rgba(255,255,255,.09),rgba(255,255,255,.03));border:1px solid var(--line);border-radius:22px;padding:22px;
+  box-shadow:0 20px 50px rgba(0,0,0,.35),inset 0 1px 0 rgba(255,255,255,.12);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
+.btn{border-radius:14px;padding:12px 18px;font-weight:600;font-size:16px;transition:transform .15s,filter .2s,background .2s,opacity .2s;display:inline-flex;flex-direction:column;align-items:center;justify-content:center;gap:2px}
+.btn small{font-size:12px;font-weight:500;opacity:.75}
+.btn:not(:disabled):hover{filter:brightness(1.08);transform:translateY(-1px)}.btn:disabled{opacity:.4}
+.btn.primary{background:linear-gradient(135deg,#5eead4,#38bdf8);color:#062a2a;box-shadow:0 8px 24px rgba(45,212,191,.28)}
+.btn.soft{background:rgba(196,181,253,.14);border:1px solid rgba(196,181,253,.35)}
+.btn.ghost{background:rgba(255,255,255,.06);border:1px solid var(--line)}
+.btn.big{width:100%;padding:16px;font-size:19px;margin-top:16px}.btn.small{padding:8px 12px;font-size:14px}
+.inp{width:100%;background:rgba(0,0,0,.25);border:1px solid var(--line);border-radius:14px;padding:13px 14px;color:var(--ink);font:500 17px 'Outfit',sans-serif;outline:none;transition:border-color .2s,box-shadow .2s}
+.inp:focus{border-color:var(--p1);box-shadow:0 0 0 4px rgba(94,234,212,.15)}
+.lbl{display:block;font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--mute);margin-bottom:8px}
+.muted{color:var(--mute)}.small{font-size:13px}
+.err{margin-top:12px;padding:10px 12px;border-radius:12px;background:rgba(251,113,133,.12);border:1px solid rgba(251,113,133,.35);color:#fecdd3;font-size:14px}
+.hint{margin-top:10px;font-size:13px;color:var(--mute);text-align:center}
+.mute{position:fixed;top:14px;right:14px;z-index:50;width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,.08);border:1px solid var(--line);font-size:19px;backdrop-filter:blur(8px)}
+
+/* lobby */
+.lobby{max-width:560px;margin:0 auto;padding:46px 18px 28px;display:grid;gap:18px}
+.brand{text-align:center}
+.logo{display:inline-grid;grid-template-columns:repeat(2,34px);gap:6px;margin-bottom:14px}
+.logo span{height:34px;border-radius:10px;display:grid;place-items:center;font-weight:700;background:rgba(94,234,212,.14);border:1px solid rgba(94,234,212,.35);color:var(--p1);animation:breathe 4.8s ease-in-out infinite}
+.logo span:nth-child(even){background:rgba(196,181,253,.14);border-color:rgba(196,181,253,.35);color:var(--p2)}
+@keyframes breathe{0%,100%{transform:scale(1);opacity:.85}50%{transform:scale(1.06);opacity:1}}
+.brand h1{font-size:44px;font-weight:700;letter-spacing:.01em;background:linear-gradient(90deg,#e0fdf8,#c4b5fd);-webkit-background-clip:text;background-clip:text;color:transparent}
+.brand p{color:var(--mute);margin-top:6px;font-size:17px}
+.split{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}
+.join{display:flex;gap:8px}.inp.code{text-transform:uppercase;letter-spacing:.3em;text-align:center;font-weight:700;padding:10px}
+.paused{margin-top:16px;padding:12px 14px;border-radius:14px;background:rgba(252,211,77,.07);border:1px dashed rgba(252,211,77,.35);display:grid;gap:2px;font-size:14px}
+.paused b{color:var(--gold);font-weight:600}.paused span{color:var(--mute)}
+.rules h2{font-size:18px;margin-bottom:10px;font-weight:600}
+.rules ol{padding-left:20px;display:grid;gap:7px;color:var(--mute);font-size:15px;line-height:1.45}.rules b{color:var(--ink);font-weight:600}
+.foot{text-align:center;font-size:13px;color:var(--mute);letter-spacing:.1em}.dg{color:#b07bff;font-weight:700}.sf{color:#8dff4a;font-weight:700}
+
+.center{min-height:100vh;display:grid;place-items:center;padding:20px}.narrow{max-width:400px;width:100%;text-align:center;display:grid;gap:12px;justify-items:center}
+.breath{width:64px;height:64px;border-radius:50%;background:radial-gradient(circle,var(--p1),transparent 70%);animation:breathe 3s ease-in-out infinite}
+.codebox{font:700 40px 'Outfit',sans-serif;letter-spacing:.3em;padding:14px 22px 10px;border-radius:18px;background:rgba(94,234,212,.1);border:1px solid rgba(94,234,212,.4);color:var(--p1);display:grid}
+.codebox small{font-size:12px;letter-spacing:.1em;color:var(--mute);font-weight:500}
+
+/* match */
+.match{height:100vh;height:100dvh;display:flex;flex-direction:column;max-width:980px;margin:0 auto;padding:12px 14px 10px}
+.topbar{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:12px;padding-right:52px}
+.player{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:16px;border:1px solid transparent;transition:all .4s}
+.player.right{flex-direction:row-reverse;text-align:right}
+.player.on{background:rgba(255,255,255,.06);border-color:color-mix(in srgb,var(--pc) 50%,transparent);box-shadow:0 0 24px color-mix(in srgb,var(--pc) 25%,transparent)}
+.avatar{width:42px;height:42px;border-radius:50%;display:grid;place-items:center;font-weight:700;font-size:19px;color:#071a1f;background:var(--pc);flex-shrink:0}
+.pinfo{display:grid;line-height:1.1;min-width:0}.pname{font-size:14px;color:var(--mute);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.pname i{font-style:normal;opacity:.6}
+.pscore{font-size:26px;font-weight:700}.warn{font-size:11px;color:var(--warn)}
+.clock{position:relative;width:58px;height:58px;display:grid;place-items:center}
+.clock svg{position:absolute;inset:0;transform:rotate(-90deg)}
+.clock circle{fill:none;stroke-width:3.5}.clock .trk{stroke:rgba(255,255,255,.1)}
+.clock .prg{stroke-dasharray:119.4;stroke-linecap:round;transition:stroke-dashoffset .25s linear,stroke .3s}
+.clock b{font-size:19px;font-weight:700}
+.status{text-align:center;margin:8px 0 10px;font-size:16px;color:var(--mute);min-height:22px;transition:color .3s}.status.mine{color:var(--p1)}
+
+.board{flex:1;min-height:0;display:flex;flex-direction:column;justify-content:center;gap:clamp(6px,1.4vh,12px)}
+.half{display:grid;grid-template-columns:1fr 1fr;gap:clamp(10px,3vw,40px)}
+.col{display:flex;flex-direction:column;gap:clamp(5px,1vh,8px)}.col.flip{flex-direction:column-reverse}
+.tile,.ans,.final{height:clamp(34px,6vh,52px);border-radius:14px;display:flex;align-items:center;justify-content:center;font-weight:600;font-size:clamp(14px,1.9vh,18px);transition:all .35s cubic-bezier(.2,.8,.2,1);text-align:center;padding:0 10px}
+.tile.closed{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);color:rgba(255,255,255,.35);letter-spacing:.08em;font-size:clamp(12px,1.6vh,15px)}
+.tile.closed.can{color:var(--p1);border-color:rgba(94,234,212,.4);background:rgba(94,234,212,.08);animation:glow 2.4s ease-in-out infinite}
+.tile.closed.can:hover{background:rgba(94,234,212,.18);transform:translateY(-1px)}
+@keyframes glow{0%,100%{box-shadow:0 0 0 rgba(94,234,212,0)}50%{box-shadow:0 0 18px rgba(94,234,212,.25)}}
+.tile.open{background:rgba(240,249,255,.92);color:#0b1a2e;border:1px solid #fff;animation:flipIn .45s ease both}
+.tile.open.solved{background:color-mix(in srgb,var(--c) 26%,#0b1a2e);color:#fff;border-color:color-mix(in srgb,var(--c) 55%,transparent)}
+@keyframes flipIn{from{transform:rotateX(80deg);opacity:.2}to{transform:none;opacity:1}}
+.ans{background:rgba(0,0,0,.2);border:1.5px dashed rgba(255,255,255,.18);color:rgba(255,255,255,.45);gap:6px}
+.ans em,.final em{font-style:normal;opacity:.7}
+.ans.can{border-color:rgba(196,181,253,.6);color:var(--p2)}.ans.can:hover,.ans.sel{background:rgba(196,181,253,.14)}
+.ans.sel,.final.sel{border-style:solid;box-shadow:0 0 0 4px rgba(196,181,253,.15)}
+.ans.done,.final.done{background:var(--c);color:#071a1f;border:0;font-weight:700;letter-spacing:.06em;animation:pop .5s ease both}
+.ans.missed,.final.missed{background:rgba(255,255,255,.1);color:var(--ink)}
+@keyframes pop{0%{transform:scale(.92);opacity:.4}60%{transform:scale(1.03)}100%{transform:none;opacity:1}}
+.finalrow{display:flex;justify-content:center;margin:clamp(2px,.8vh,8px) 0}
+.final{width:min(380px,70%);height:clamp(44px,7.5vh,64px);border-radius:18px;font-size:clamp(16px,2.2vh,21px);background:rgba(252,211,77,.07);border:1.5px dashed rgba(252,211,77,.45);color:var(--gold);gap:8px}
+.final.can{animation:glowGold 2.6s ease-in-out infinite}.final.can:hover,.final.sel{background:rgba(252,211,77,.16)}
+@keyframes glowGold{0%,100%{box-shadow:0 0 0 rgba(252,211,77,0)}50%{box-shadow:0 0 26px rgba(252,211,77,.25)}}
+.shake{animation:shake .45s ease}@keyframes shake{25%{transform:translateX(-8px)}75%{transform:translateX(8px)}}
+
+.dock{margin-top:10px;min-height:56px}
+.guess{display:flex;gap:8px;align-items:center;background:rgba(255,255,255,.06);border:1px solid var(--line);border-radius:18px;padding:8px}
+.guess .inp{flex:1;padding:11px 12px}.tag{font-size:13px;color:var(--p2);font-weight:600;padding:0 6px;white-space:nowrap}
+.actions{display:flex;gap:10px;align-items:center}
+.log{flex:1;list-style:none;font-size:13px;color:var(--mute);display:grid;gap:2px;min-width:0}
+.log li{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+.overlay{position:fixed;inset:0;z-index:40;display:grid;place-items:end center;padding:18px;background:linear-gradient(180deg,transparent 30%,rgba(5,10,24,.75));animation:fade .5s ease}
+@keyframes fade{from{opacity:0}}
+.end{width:min(440px,100%);text-align:center;display:grid;gap:10px;justify-items:center}
+.end .big{font-size:46px}.end h2{font-size:28px}.scores{display:flex;gap:18px;font-size:16px}.row{display:flex;gap:10px}
+
+@media (max-width:640px){
+  .lobby{padding-top:64px}.brand h1{font-size:36px}.split{grid-template-columns:1fr}
+  .topbar{gap:6px;padding-right:48px}.player{padding:6px;gap:7px}.avatar{width:34px;height:34px;font-size:16px}.pscore{font-size:21px}
+  .clock{width:50px;height:50px}.half{gap:8px}.tile,.ans{border-radius:11px;padding:0 6px}
+  .log{display:none}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 `;
