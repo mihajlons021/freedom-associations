@@ -213,10 +213,10 @@ function Match({ g, role, practice, setLocal, roomId, onLeave, onAgain }) {
   const lastLog = useRef((g.log || [])[0] || "");
   useEffect(() => {
     const top = (g.log || [])[0] || ""; if (top === lastLog.current) return; lastLog.current = top;
-    if (top.startsWith("✓") || top.startsWith("★")) sfx.right(); else if (top.startsWith("✗")) sfx.wrong(); else if (/ opened /.test(top)) sfx.open();
+    if (top.startsWith("★")) sfx.final(); else if (top.startsWith("✓")) sfx.right(); else if (top.startsWith("✗")) sfx.wrong(); else if (/ opened /.test(top)) sfx.open();
   }, [g.log]);
   const winRef = useRef(false);
-  useEffect(() => { if (over && !winRef.current) { winRef.current = true; if (g.winner === role) sfx.win(); recordResult(g, role, practice); } }, [over]);
+  useEffect(() => { if (over && !winRef.current) { winRef.current = true; if (g.winner === role && !g.finalSolved) sfx.win(); recordResult(g, role, practice); } }, [over]);
 
   useEffect(() => { if (target) setTimeout(() => inputRef.current?.focus(), 30); }, [target]);
 
