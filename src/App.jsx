@@ -5,6 +5,14 @@ import { getDatabase, ref, set, get, onValue, runTransaction, remove } from "fir
 import { BOARDS } from "./boards";
 import * as G from "./logic";
 import { boot, menuMusic, gameMusic, isMuted, setMuted, onMute, sfx } from "./audio";
+import { pfStatus, pfDeposit, pfSign, pfSettle, pfRoundUp } from "./pf-pay";
+
+// stakes this device made that still wait for a result or a refund
+const PEND = "pf_as_stakes";
+const pendingStakes = () => { try { return JSON.parse(localStorage.getItem(PEND) || "[]"); } catch { return []; } };
+const savePending = l => { try { localStorage.setItem(PEND, JSON.stringify(l)); } catch {} };
+const addPending = x => savePending([...pendingStakes().filter(p => p.sig !== x.sig), x]);
+const dropPending = sig => savePending(pendingStakes().filter(p => p.sig !== sig));
 
 const FB = { apiKey: "AIzaSyAKmKRj7Hhy4K6DsY_XDbqLb3oYOwZC5jw", authDomain: "project-freedom-a004e.firebaseapp.com", databaseURL: "https://project-freedom-a004e-default-rtdb.firebaseio.com", projectId: "project-freedom-a004e", storageBucket: "project-freedom-a004e.firebasestorage.app", messagingSenderId: "844172246267", appId: "1:844172246267:web:a31b8cd6affe8337f7845e" };
 let db = null; try { db = getDatabase(initializeApp(FB)); } catch (e) {}
@@ -23,6 +31,7 @@ export default function App() {
   const [local, setLocal] = useState(null);           // practice state
   const [remote, setRemote] = useState(null);         // friend state (from Firebase)
   const [err, setErr] = useState("");
+  const [busy, setBusy] = useState("");
 
   useEffect(() => { boot(); }, []);
   useEffect(() => { if (screen === "game") gameMusic(); else menuMusic(); }, [screen]);
@@ -34,7 +43,7 @@ export default function App() {
     return onValue(ref(db, "games/" + roomId), s => {
       const d = s.val(); if (!d) return;
       setRemote(d);
-      if (d.status !== "waiting") setScreen(sc => (sc === "waiting" ? "game" : sc));
+      if (d.status === "active" || d.status === "finished") setScreen(sc => (sc === "waiting" ? "game" : sc));
     });
   }, [roomId]);
 
@@ -45,11 +54,21 @@ export default function App() {
     setLocal(G.newGame({ boardIdx: G.pickBoard(exclude), p1: me(), p2: { id: "bot", name: BOT_NAMES[Math.floor(Math.random() * BOT_NAMES.length)], bot: true }, mode: "practice" }));
     setScreen("game");
   }
-  async function createRoom() {
+  async function createRoom(stake = 0) {
     if (!db) { setErr("Online play is unavailable right now."); return; }
     const id = roomCode();
-    await set(ref(db, "games/" + id), { ...G.newGame({ p1: me(), mode: "friend" }), createdAt: Date.now() });
-    setMode("friend"); setRole("p1"); setRoomId(id); setRemote(null); setErr(""); setScreen("waiting");
+    let extra = {};
+    try {
+      setErr("");
+      if (stake) {
+        const pfRoom = id + "-" + Math.random().toString(36).slice(2, 10);
+        const r = await pfDeposit({ game: "associations", room: pfRoom, amount: stake, onStatus: setBusy });
+        addPending({ room: pfRoom, sig: r.signature, amount: stake, t: Date.now() });
+        extra = { stake, pfRoom, p1Tx: r.signature, p1Wallet: r.wallet };
+      }
+      await set(ref(db, "games/" + id), { ...G.newGame({ p1: me(), mode: "friend" }), createdAt: Date.now(), ...extra });
+      setBusy(""); setMode("friend"); setRole("p1"); setRoomId(id); setRemote(null); setScreen("waiting");
+    } catch (e) { setBusy(""); setErr(e.message); }
   }
   async function joinRoom(code) {
     const id = code.trim().toUpperCase(); setErr("");
@@ -58,19 +77,35 @@ export default function App() {
     const d = snap.val();
     if (!d) { setErr(`Room ${id} doesn't exist.`); return; }
     if (d.p1?.id === uid) { setErr("That's your own room — share the code with a friend."); return; }
-    if (d.status !== "waiting") { setErr("That game has already started."); return; }
-    const r = await runTransaction(ref(db, "games/" + id), cur => {
-      if (!cur) return cur;
-      if (cur.status !== "waiting") return;
-      return { ...cur, p2: me(), status: "active", turn: "p1", turnAt: Date.now(), didOpen: false, acted: false };
-    });
-    if (!r.committed) { setErr("Someone else joined first."); return; }
+    if (d.status !== "waiting") { setErr(d.status === "paying" ? "Someone is joining this room right now." : "That game has already started."); return; }
+    if (d.stake) {
+      if (!window.confirm(`This match has a stake of ${d.stake} FREEDOM from each player. The winner gets ${Math.floor(d.stake * 2 * 0.95)} FREEDOM. Stake and join?`)) return;
+      // reserve the seat first, so two people never stake for the same seat
+      const hold = await runTransaction(ref(db, "games/" + id), cur => (cur && cur.status === "waiting" ? { ...cur, p2: me(), status: "paying", payingAt: Date.now() } : undefined));
+      if (!hold.committed) { setErr("Someone else joined first."); return; }
+      try {
+        const r = await pfDeposit({ game: "associations", room: d.pfRoom, amount: d.stake, onStatus: setBusy });
+        addPending({ room: d.pfRoom, sig: r.signature, amount: d.stake, t: Date.now() });
+        await runTransaction(ref(db, "games/" + id), cur => (cur ? { ...cur, p2Tx: r.signature, p2Wallet: r.wallet, status: "active", turn: "p1", turnAt: Date.now(), didOpen: false, acted: false } : cur));
+      } catch (e) {
+        await runTransaction(ref(db, "games/" + id), cur => (cur && cur.status === "paying" && cur.p2?.id === uid ? { ...cur, p2: null, status: "waiting" } : undefined)).catch(() => {});
+        setBusy(""); setErr(e.message); return;
+      }
+      setBusy("");
+    } else {
+      const r = await runTransaction(ref(db, "games/" + id), cur => {
+        if (!cur) return cur;
+        if (cur.status !== "waiting") return;
+        return { ...cur, p2: me(), status: "active", turn: "p1", turnAt: Date.now(), didOpen: false, acted: false };
+      });
+      if (!r.committed) { setErr("Someone else joined first."); return; }
+    }
     setMode("friend"); setRole("p2"); setRoomId(id); setScreen("game");
   }
   function leave() {
     if (mode === "friend" && roomId && db) {
       const g = remote;
-      if (g?.status === "waiting") remove(ref(db, "games/" + roomId)).catch(() => {});
+      if (g?.status === "waiting") { remove(ref(db, "games/" + roomId)).catch(() => {}); if (g.stake) window.alert("Your stake is safe. You can take it back from the lobby 30 minutes after you staked."); }
       else if (g?.status === "active") runTransaction(ref(db, "games/" + roomId), cur => (cur ? G.forfeit(cur, role) || undefined : cur)).catch(() => {});
     }
     setRoomId(null); setRemote(null); setLocal(null); setMode(null); setScreen("lobby");
@@ -81,12 +116,13 @@ export default function App() {
       <style>{CSS}</style>
       <div className="aurora" aria-hidden="true"><i /><i /><i /></div>
       <MuteButton />
-      {screen === "lobby" && <Lobby name={name} setName={setName} err={err} onPractice={() => startPractice()} onCreate={createRoom} onJoin={joinRoom} />}
-      {screen === "waiting" && <Waiting code={roomId} onCancel={leave} />}
+      {screen === "lobby" && <Lobby name={name} setName={setName} err={err} busy={busy} onPractice={() => startPractice()} onCreate={createRoom} onJoin={joinRoom} />}
+      {screen === "waiting" && <Waiting code={roomId} g={remote} onCancel={leave} />}
       {screen === "game" && mode === "practice" && local &&
         <Match g={local} role="p1" practice setLocal={setLocal} onLeave={leave} onAgain={() => startPractice(local.boardIdx)} />}
       {screen === "game" && mode === "friend" && remote &&
         <Match g={remote} role={role} roomId={roomId} onLeave={leave} onAgain={leave} />}
+      {busy && screen === "lobby" && <div className="overlay"><div className="card narrow"><div className="breath" aria-hidden="true" /><p>{busy}</p></div></div>}
     </div>
   );
 }
@@ -94,6 +130,9 @@ export default function App() {
 /* ============================== LOBBY ============================== */
 function Lobby({ name, setName, err, onPractice, onCreate, onJoin }) {
   const [code, setCode] = useState("");
+  const [st, setSt] = useState(null);
+  const [stake, setStake] = useState(0);
+  useEffect(() => { pfStatus().then(setSt).catch(() => setSt({})); }, []);
   const ok = name.trim().length > 0;
   return (
     <main className="lobby">
@@ -112,7 +151,7 @@ function Lobby({ name, setName, err, onPractice, onCreate, onJoin }) {
         <button className="btn primary big" disabled={!ok} onClick={onPractice}>Play vs bot <small>free · instant</small></button>
 
         <div className="split">
-          <button className="btn soft" disabled={!ok} onClick={onCreate}>Invite a friend <small>create a room</small></button>
+          <button className="btn soft" disabled={!ok} onClick={() => onCreate(stake)}>Invite a friend <small>{stake ? `stake ${stake} FREEDOM` : "create a room · free"}</small></button>
           <form className="join" onSubmit={e => { e.preventDefault(); onJoin(code); }}>
             <input className="inp code" value={code} maxLength={6} placeholder="CODE" aria-label="Room code" onChange={e => setCode(e.target.value.toUpperCase())} />
             <button className="btn soft" disabled={!ok || code.length !== 6}>Join</button>
@@ -121,10 +160,19 @@ function Lobby({ name, setName, err, onPractice, onCreate, onJoin }) {
         {err && <div className="err" role="alert">{err}</div>}
         {!ok && <div className="hint">Enter your name to start.</div>}
 
-        <div className="paused">
-          <b>FREEDOM token matches</b>
-          <span>Paused while we upgrade the escrow. Free games are open.</span>
-        </div>
+        {st?.enabled ? (
+          <div className="stakes">
+            <b>Play for FREEDOM</b>
+            <span>Stake for your room. The winner gets 95% of both stakes, paid by the Project Freedom payout server after both players confirm.</span>
+            <div className="seg">{[0, 100, 500, 1000].map(v => <button key={v} className={"chip" + (stake === v ? " on" : "")} onClick={() => setStake(v)}>{v ? v : "Free"}</button>)}</div>
+          </div>
+        ) : (
+          <div className="paused">
+            <b>FREEDOM token matches</b>
+            <span>Paused while we upgrade the escrow. Free games are open.</span>
+          </div>
+        )}
+        <PendingStakes />
       </section>
 
       <section className="card rules">
@@ -143,14 +191,15 @@ function Lobby({ name, setName, err, onPractice, onCreate, onJoin }) {
   );
 }
 
-function Waiting({ code, onCancel }) {
+function Waiting({ code, g, onCancel }) {
   const [copied, setCopied] = useState(false);
   return (
     <main className="center">
       <div className="card narrow">
         <div className="breath" aria-hidden="true" />
         <h2>Waiting for your friend</h2>
-        <p className="muted">Send them this room code:</p>
+        <p className="muted">{g?.status === "paying" ? "Your friend is staking now…" : "Send them this room code:"}</p>
+        {g?.stake ? <p className="muted small">Stake: {g.stake} FREEDOM each · winner gets {Math.floor(g.stake * 2 * 0.95)} FREEDOM</p> : null}
         <button className="codebox" onClick={() => { navigator.clipboard?.writeText(code); setCopied(true); setTimeout(() => setCopied(false), 1500); }}>
           {code}<small>{copied ? "copied ✓" : "tap to copy"}</small>
         </button>
@@ -298,7 +347,7 @@ function Match({ g, role, practice, setLocal, roomId, onLeave, onAgain }) {
         )}
       </div>
 
-      {over && <EndCard g={g} role={role} practice={practice} onAgain={onAgain} onLeave={onLeave} />}
+      {over && <EndCard g={g} role={role} practice={practice} roomId={roomId} onAgain={onAgain} onLeave={onLeave} />}
     </main>
   );
 }
@@ -316,7 +365,7 @@ function Player({ p, score, color, active, you, right, strikes }) {
   );
 }
 
-function EndCard({ g, role, practice, onAgain, onLeave }) {
+function EndCard({ g, role, practice, roomId, onAgain, onLeave }) {
   const draw = g.winner === "draw", won = g.winner === role;
   return (
     <div className="overlay" role="dialog" aria-label="Game result">
@@ -326,11 +375,67 @@ function EndCard({ g, role, practice, onAgain, onLeave }) {
         <p className="muted">{g.reason}</p>
         <div className="scores"><span>{g[role]?.name}: <b>{g.scores?.[role] || 0}</b></span><span>{g[role === "p1" ? "p2" : "p1"]?.name}: <b>{g.scores?.[role === "p1" ? "p2" : "p1"] || 0}</b></span></div>
         <p className="muted small">The full board is shown behind this card.</p>
+        {!practice && g.stake ? <StakeBox g={g} role={role} roomId={roomId} /> : null}
         <div className="row">
           <button className="btn primary" onClick={onAgain}>{practice ? "Play again" : "Back to lobby"}</button>
           {practice && <button className="btn ghost" onClick={onLeave}>Lobby</button>}
         </div>
       </div>
+    </div>
+  );
+}
+
+// Both players sign the result in Phantom (free, nothing leaves the wallet); with both signatures the
+// payout server pays. Signatures travel through this game's room in the database.
+function StakeBox({ g, roomId }) {
+  const [msg, setMsg] = useState("Checking stakes on the blockchain…");
+  const [round, setRound] = useState(null);
+  const [signed, setSigned] = useState(false);
+  const [askable, setAskable] = useState(false);
+  const [done, setDone] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    pfRoundUp({
+      game: "associations", room: g.pfRoom, deposits: [g.p1Tx, g.p2Tx],
+      resultFrom: chk => (g.winner === "draw" ? "draw" : chk.find(x => x.sig === g[g.winner + "Tx"]).player),
+      store: {
+        put: (w, sig) => set(ref(db, `games/${roomId}/pfsigs/${w}`), sig),
+        watch: cb => onValue(ref(db, `games/${roomId}/pfsigs`), s => cb(s.val() || {})),
+      },
+      onStatus: t => alive && setMsg(t),
+      onPaid: r => { if (!alive) return; setDone(true); [g.p1Tx, g.p2Tx].forEach(dropPending); setMsg(r ? (r.kind === "draw" ? "Both stakes returned." : `Paid ${r.transfers[0].amount} FREEDOM to the winner ✅`) : "This match has already been paid out."); },
+    }).then(rd => { if (alive) { setRound(rd); setMsg("Confirm the result so the match closes. Free, nothing leaves your wallet."); } })
+      .catch(e => alive && setMsg(e.message));
+    const t = setTimeout(() => alive && setAskable(true), 180000);
+    return () => { alive = false; clearTimeout(t); };
+  }, []);
+  return (
+    <div className="stakebox">
+      <p>{msg}</p>
+      {round && !signed && !done && <button className="btn primary" onClick={async () => { try { await round.sign(); setSigned(true); } catch (e) { setMsg(e.message); } }}>✍ Confirm result</button>}
+      {round && signed && askable && !done && <button className="btn ghost small" onClick={async () => { try { await round.ask(); setMsg("The owner was notified and will decide."); } catch (e) { setMsg(e.message); } }}>Opponent won't confirm? Ask the owner</button>}
+    </div>
+  );
+}
+
+function PendingStakes() {
+  const [list, setList] = useState(pendingStakes);
+  const [, tick] = useState(0);
+  useEffect(() => { const t = setInterval(() => tick(x => x + 1), 30000); return () => clearInterval(t); }, []);
+  if (!list.length) return null;
+  const refund = async x => {
+    try {
+      const sg = await pfSign({ game: "associations", room: x.room, result: "refund", deposits: [x.sig] });
+      await pfSettle({ game: "associations", room: x.room, result: "refund", deposits: [x.sig], signatures: { [sg.wallet]: sg.signature } });
+      dropPending(x.sig); setList(pendingStakes()); window.alert("Your stake is on its way back ✅");
+    } catch (e) { if (/already been paid/i.test(e.message)) { dropPending(x.sig); setList(pendingStakes()); } window.alert(e.message); }
+  };
+  return (
+    <div className="stakes">
+      <b>Your stakes waiting for a result</b>
+      {list.map(x => { const mins = Math.ceil(31 - (Date.now() - x.t) / 60000); return (
+        <div key={x.sig} className="pend"><span>{x.amount} FREEDOM · room {x.room.split("-")[0]}</span>
+          <button className="btn ghost small" disabled={mins > 0} onClick={() => refund(x)}>{mins > 0 ? `Refund in ${mins} min` : "Get my stake back"}</button></div>); })}
     </div>
   );
 }
@@ -396,6 +501,11 @@ button{font-family:inherit;color:inherit;cursor:pointer;border:0;background:none
 .join{display:flex;gap:8px}.inp.code{text-transform:uppercase;letter-spacing:.3em;text-align:center;font-weight:700;padding:10px}
 .paused{margin-top:16px;padding:12px 14px;border-radius:14px;background:rgba(252,211,77,.07);border:1px dashed rgba(252,211,77,.35);display:grid;gap:2px;font-size:14px}
 .paused b{color:var(--gold);font-weight:600}.paused span{color:var(--mute)}
+.stakes{margin-top:16px;padding:12px 14px;border-radius:14px;background:rgba(94,234,212,.06);border:1px solid rgba(94,234,212,.25);display:grid;gap:6px;font-size:14px}
+.stakes b{color:#5eead4;font-weight:600}.stakes span{color:var(--mute)}
+.seg{display:flex;gap:6px;flex-wrap:wrap}.chip{padding:7px 14px;border-radius:999px;background:rgba(255,255,255,.06);border:1px solid var(--line);font-weight:600;font-size:14px}.chip.on{background:#5eead4;color:#062a2a;border-color:#5eead4}
+.pend{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.stakebox{margin:12px 0;padding:12px;border-radius:14px;background:rgba(94,234,212,.06);border:1px solid rgba(94,234,212,.25);display:grid;gap:8px;font-size:14px}
 .rules h2{font-size:18px;margin-bottom:10px;font-weight:600}
 .rules ol{padding-left:20px;display:grid;gap:7px;color:var(--mute);font-size:15px;line-height:1.45}.rules b{color:var(--ink);font-weight:600}
 .foot{text-align:center;font-size:13px;color:var(--mute);letter-spacing:.1em}.dg{color:#b07bff;font-weight:700}.sf{color:#8dff4a;font-weight:700}
